@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Question } from '../types';
-import { CheckCircle2, XCircle, AlertCircle, HelpCircle } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertCircle, HelpCircle, TrendingUp, RotateCcw } from 'lucide-react';
+
+interface QuizAttemptRecord { score: number; total: number; date: string; }
 
 interface InlineQuizProps {
   title: string;
@@ -8,9 +10,10 @@ interface InlineQuizProps {
   onSubmit: (score: number, total: number) => void;
   initialAnswers?: Record<string, string>;
   isReviewMode?: boolean;
+  attemptHistory?: QuizAttemptRecord[];
 }
 
-export function InlineQuiz({ title, questions, onSubmit, initialAnswers, isReviewMode }: InlineQuizProps) {
+export function InlineQuiz({ title, questions, onSubmit, initialAnswers, isReviewMode, attemptHistory }: InlineQuizProps) {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>(initialAnswers || {});
   const [isSubmitted, setIsSubmitted] = useState(isReviewMode || false);
@@ -156,39 +159,108 @@ export function InlineQuiz({ title, questions, onSubmit, initialAnswers, isRevie
             </div>
           </>
         ) : (
-          <div className="text-center py-8">
-            <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <CheckCircle2 className="w-12 h-12 text-green-600" />
-            </div>
-            <h2 className="text-3xl font-extrabold text-slate-900 mb-2">Quiz Completed!</h2>
-            <p className="text-slate-500 mb-10 text-lg">You scored <span className="font-bold text-slate-900">{calculateScore()}</span> out of {questions.length}</p>
-            
-            <div className="space-y-6 text-left mb-8">
+          <div className="py-6">
+            {/* Score banner */}
+            {(() => {
+              const score = calculateScore();
+              const pct = questions.length > 0 ? Math.round((score / questions.length) * 100) : 0;
+              const passed = pct >= 60;
+              // Merge mock attempt history with the fresh submission
+              const allAttempts: QuizAttemptRecord[] = [
+                ...(attemptHistory ?? []),
+                { score, total: questions.length, date: new Date().toISOString().split('T')[0] },
+              ];
+              return (
+                <>
+                  <div className={`flex items-center gap-4 p-5 rounded-2xl mb-6 ${passed ? 'bg-emerald-50 border border-emerald-200' : 'bg-amber-50 border border-amber-200'}`}>
+                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 ${passed ? 'bg-emerald-100' : 'bg-amber-100'}`}>
+                      {passed
+                        ? <CheckCircle2 className="w-9 h-9 text-emerald-600" />
+                        : <AlertCircle className="w-9 h-9 text-amber-600" />}
+                    </div>
+                    <div className="flex-1">
+                      <h2 className="text-2xl font-extrabold text-slate-900">
+                        {passed ? 'Great work!' : 'Quiz Done'}
+                      </h2>
+                      <p className={`text-sm font-medium mt-0.5 ${passed ? 'text-emerald-600' : 'text-amber-600'}`}>
+                        {score}/{questions.length} correct · {pct}%
+                        {passed ? ' · Passed' : ' · Review explanations below'}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className={`text-4xl font-black ${passed ? 'text-emerald-600' : 'text-amber-600'}`}>{pct}%</span>
+                    </div>
+                  </div>
+
+                  {/* Attempt history chart */}
+                  {allAttempts.length > 1 && (
+                    <div className="mb-6 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                        <TrendingUp className="w-3.5 h-3.5" /> Your Progress Over Time
+                      </p>
+                      <div className="flex items-end gap-3">
+                        {allAttempts.map((a, i) => {
+                          const aPct = a.total > 0 ? Math.round((a.score / a.total) * 100) : 0;
+                          const isLatest = i === allAttempts.length - 1;
+                          return (
+                            <div key={i} className="flex flex-col items-center gap-1 flex-1">
+                              <span className={`text-xs font-extrabold ${isLatest ? 'text-blue-600' : 'text-slate-500'}`}>{aPct}%</span>
+                              <div className="w-full rounded-t-lg transition-all" style={{
+                                height: `${Math.max(8, aPct * 0.6)}px`,
+                                backgroundColor: isLatest ? '#3b82f6' : '#cbd5e1',
+                              }} />
+                              <span className="text-[9px] text-slate-400 font-bold">#{i + 1}</span>
+                              <span className="text-[8px] text-slate-300 hidden sm:block truncate w-full text-center">{a.date}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
+                        <span>{allAttempts.length} attempt{allAttempts.length !== 1 ? 's' : ''}</span>
+                        {allAttempts.length > 1 && (() => {
+                          const first = allAttempts[0];
+                          const last  = allAttempts[allAttempts.length - 1];
+                          const diff  = Math.round(((last.score / last.total) - (first.score / first.total)) * 100);
+                          return (
+                            <span className={`font-bold ${diff >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                              {diff >= 0 ? '+' : ''}{diff}% from first attempt
+                            </span>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+
+            {/* Q&A review */}
+            <div className="space-y-5 text-left">
               {questions.map((q, idx) => {
                 const isCorrect = answers[q.id] === q.correctAnswer;
                 return (
-                  <div key={q.id} className={`p-6 rounded-2xl border ${isCorrect ? 'bg-green-50/50 border-green-100' : 'bg-red-50/50 border-red-100'}`}>
+                  <div key={q.id} className={`p-5 rounded-2xl border ${isCorrect ? 'bg-green-50/50 border-green-100' : 'bg-red-50/50 border-red-100'}`}>
                     <div className="flex items-start gap-4">
-                      {isCorrect ? <CheckCircle2 className="w-6 h-6 text-green-600 shrink-0 mt-1" /> : <XCircle className="w-6 h-6 text-red-600 shrink-0 mt-1" />}
+                      {isCorrect
+                        ? <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0 mt-1" />
+                        : <XCircle className="w-5 h-5 text-red-600 shrink-0 mt-1" />}
                       <div className="flex-1">
-                        <p className="font-bold text-slate-900 mb-4 text-lg">{idx + 1}. {q.text}</p>
-                        
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                        <p className="font-bold text-slate-900 mb-3">{idx + 1}. {q.text}</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                           <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
                             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Your Answer</p>
-                            <p className={`font-semibold ${isCorrect ? 'text-green-700' : 'text-red-700'}`}>{answers[q.id] || 'No answer'}</p>
+                            <p className={`font-semibold text-sm ${isCorrect ? 'text-green-700' : 'text-red-700'}`}>{answers[q.id] || 'No answer'}</p>
                           </div>
                           {!isCorrect && (
                             <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
                               <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Correct Answer</p>
-                              <p className="font-semibold text-green-700">{q.correctAnswer}</p>
+                              <p className="font-semibold text-green-700 text-sm">{q.correctAnswer}</p>
                             </div>
                           )}
                         </div>
-                        
-                        <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
-                          <div className="flex items-center gap-2 mb-2">
-                            <AlertCircle className="w-4 h-4 text-blue-500" />
+                        <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <AlertCircle className="w-3.5 h-3.5 text-blue-500" />
                             <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Explanation</p>
                           </div>
                           <p className="text-sm text-slate-600 leading-relaxed">{q.explanation}</p>

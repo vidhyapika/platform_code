@@ -95,7 +95,7 @@ export function AdminDashboard() {
       .map(s => ({
         ...s,
         standardName: MOCK_STANDARDS.find(st => st.id === s.standardId)?.name ?? '',
-        sectionName: MOCK_CLASSES.find(c => c.classId === s.classId || c.id === s.classId)?.name ?? '',
+        sectionName: MOCK_CLASSES.find(c => c.id === s.classId)?.name ?? '',
       }));
   }, []);
 

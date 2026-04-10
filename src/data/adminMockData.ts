@@ -26,7 +26,9 @@ export interface Question {
 export interface Prerequisite {
   id: string;
   title: string;
+  description?: string;
   category: 'Major' | 'Intermediate' | 'Minor';
+  questions?: Question[];
 }
 
 export interface SubTopic {
@@ -212,8 +214,67 @@ export const INITIAL_CURRICULUM_DATA: Standard[] = [
             title: 'Algebraic Expressions',
             sequence: 1,
             prerequisites: [
-              { id: 'pre-1', title: 'Basic Arithmetic Operations', category: 'Major' },
-              { id: 'pre-2', title: 'Understanding Variables', category: 'Intermediate' },
+              {
+                id: 'pre-1',
+                title: 'Basic Arithmetic Operations',
+                description: 'Ability to add, subtract, multiply and divide whole numbers and fractions.',
+                category: 'Major',
+                questions: [
+                  {
+                    id: 'prereq-1-q1',
+                    text: 'What is the result of 48 ÷ 6 + 3 × 2?',
+                    type: 'mcq',
+                    options: ['14', '18', '12', '16'],
+                    correctAnswer: '14',
+                    explanation: 'Division and multiplication first: 48÷6 = 8, 3×2 = 6. Then addition: 8+6 = 14.',
+                    difficulty: 'Easy',
+                  },
+                  {
+                    id: 'prereq-1-q2',
+                    text: 'Which of the following fractions is equivalent to 3/4?',
+                    type: 'mcq',
+                    options: ['6/9', '9/12', '4/5', '2/3'],
+                    correctAnswer: '9/12',
+                    explanation: '3/4 = 9/12 (multiply numerator and denominator by 3).',
+                    difficulty: 'Easy',
+                  },
+                  {
+                    id: 'prereq-1-q3',
+                    text: 'What is 15% of 200?',
+                    type: 'mcq',
+                    options: ['25', '30', '35', '40'],
+                    correctAnswer: '30',
+                    explanation: '15% of 200 = 0.15 × 200 = 30.',
+                    difficulty: 'Medium',
+                  },
+                ],
+              },
+              {
+                id: 'pre-2',
+                title: 'Understanding Variables',
+                description: 'Familiarity with representing unknown quantities using letters in simple expressions.',
+                category: 'Intermediate',
+                questions: [
+                  {
+                    id: 'prereq-2-q1',
+                    text: 'If x = 4, what is the value of 3x + 2?',
+                    type: 'mcq',
+                    options: ['10', '14', '12', '16'],
+                    correctAnswer: '14',
+                    explanation: '3(4) + 2 = 12 + 2 = 14.',
+                    difficulty: 'Easy',
+                  },
+                  {
+                    id: 'prereq-2-q2',
+                    text: 'Which expression represents "5 more than twice a number n"?',
+                    type: 'mcq',
+                    options: ['5n + 2', '2n + 5', '2n - 5', '5 - 2n'],
+                    correctAnswer: '2n + 5',
+                    explanation: 'Twice a number n is 2n; 5 more than that is 2n + 5.',
+                    difficulty: 'Easy',
+                  },
+                ],
+              },
             ],
             preEvaluationQuiz: [
               {
@@ -263,7 +324,41 @@ export const INITIAL_CURRICULUM_DATA: Standard[] = [
             title: 'Linear Equations',
             sequence: 2,
             prerequisites: [
-              { id: 'pre-3', title: 'Algebraic Expressions', category: 'Major' },
+              {
+                id: 'pre-3',
+                title: 'Algebraic Expressions',
+                description: 'Understanding how to simplify and evaluate algebraic expressions with one variable.',
+                category: 'Major',
+                questions: [
+                  {
+                    id: 'prereq-3-q1',
+                    text: 'Simplify: 3x + 2x - x',
+                    type: 'mcq',
+                    options: ['4x', '5x', '6x', '3x'],
+                    correctAnswer: '4x',
+                    explanation: '3x + 2x - x = (3+2-1)x = 4x.',
+                    difficulty: 'Easy',
+                  },
+                  {
+                    id: 'prereq-3-q2',
+                    text: 'Expand: 2(x + 3)',
+                    type: 'mcq',
+                    options: ['2x + 3', '2x + 6', 'x + 6', '2x + 5'],
+                    correctAnswer: '2x + 6',
+                    explanation: 'Distribute 2: 2×x + 2×3 = 2x + 6.',
+                    difficulty: 'Easy',
+                  },
+                  {
+                    id: 'prereq-3-q3',
+                    text: 'If a = 2 and b = 3, find the value of 2a² - b.',
+                    type: 'mcq',
+                    options: ['5', '7', '9', '11'],
+                    correctAnswer: '5',
+                    explanation: '2(2²) - 3 = 2(4) - 3 = 8 - 3 = 5.',
+                    difficulty: 'Medium',
+                  },
+                ],
+              },
             ],
             preEvaluationQuiz: [
               {

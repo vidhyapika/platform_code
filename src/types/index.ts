@@ -102,10 +102,18 @@ export interface Question {
   difficulty: 'Easy' | 'Medium' | 'Hard';
 }
 
+export interface QuizAttempt {
+  score: number;
+  total: number;
+  date: string;
+}
+
 export interface Prerequisite {
   id: string;
   title: string;
+  description?: string;
   category: 'Major' | 'Intermediate' | 'Minor';
+  questions?: Question[];
 }
 
 export interface SubTopic { 
@@ -137,6 +145,7 @@ export interface StudentSubTopicProgress {
     total: number;
     date: string;
     pastAnswers?: Record<string, string>;
+    attempts?: QuizAttempt[];
   };
 }
 
@@ -152,6 +161,7 @@ export interface StudentTopicProgress {
     score: number;
     total: number;
     date: string;
+    attempts?: QuizAttempt[];
   }[];
   preEvaluationQuiz?: Question[];
   preEvaluationScore?: {
@@ -159,12 +169,14 @@ export interface StudentTopicProgress {
     total: number;
     date: string;
     pastAnswers?: Record<string, string>;
+    attempts?: QuizAttempt[];
   };
   sectionEndScore?: {
     score: number;
     total: number;
     date: string;
     pastAnswers?: Record<string, string>;
+    attempts?: QuizAttempt[];
   };
   postEvaluationQuiz?: Question[];
   postEvaluationScore?: {
@@ -172,6 +184,7 @@ export interface StudentTopicProgress {
     total: number;
     date: string;
     pastAnswers?: Record<string, string>;
+    attempts?: QuizAttempt[];
   };
   subtopicsCompleted: number;
   totalSubtopics: number;

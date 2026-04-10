@@ -36,6 +36,7 @@ function buildStudentCurriculum(): StudentCurriculumProgress {
       const subTopics: StudentSubTopicProgress[] = topic.subTopics.map((sub, sIdx): StudentSubTopicProgress => {
         const subCompleted  = isCompleted;
         const subInProgress = isInProgress && sIdx === 0;
+        const quizTotal = sub.quizzes?.length ?? 0;
         return {
           id:           sub.id,
           title:        sub.title,
@@ -43,36 +44,82 @@ function buildStudentCurriculum(): StudentCurriculumProgress {
           videoUrl:     toEmbed(sub.videoUrl),
           videoWatched: subCompleted,
           quizzes:      sub.quizzes,
-          quizScore:    subCompleted && sub.quizzes?.length
-            ? { score: sub.quizzes.length, total: sub.quizzes.length, date: '2026-03-15',
-                pastAnswers: Object.fromEntries(sub.quizzes.map(q => [q.id, q.correctAnswer])) }
+          quizScore:    subCompleted && quizTotal > 0
+            ? {
+                score: quizTotal,
+                total: quizTotal,
+                date: '2026-03-15',
+                pastAnswers: Object.fromEntries((sub.quizzes ?? []).map(q => [q.id, q.correctAnswer])),
+                attempts: [
+                  { score: Math.max(1, quizTotal - 2), total: quizTotal, date: '2026-03-10' },
+                  { score: Math.max(1, quizTotal - 1), total: quizTotal, date: '2026-03-12' },
+                  { score: quizTotal,                  total: quizTotal, date: '2026-03-15' },
+                ],
+              }
             : undefined,
         };
       });
 
-      const preEvalTotal = topic.preEvaluationQuiz?.length ?? 0;
+      const preEvalTotal  = topic.preEvaluationQuiz?.length  ?? 0;
       const postEvalTotal = topic.postEvaluationQuiz?.length ?? 0;
+
+      // Build prereq scores with attempt history
+      const prerequisiteScores = isCompleted
+        ? (topic.prerequisites ?? []).map((p, pi) => ({
+            id: p.id, title: p.title,
+            score: p.questions?.length ?? 3,
+            total: p.questions?.length ?? 3,
+            date: '2026-03-10',
+            attempts: [
+              { score: Math.max(1, (p.questions?.length ?? 3) - 1), total: p.questions?.length ?? 3, date: '2026-03-08' },
+              { score: p.questions?.length ?? 3,                    total: p.questions?.length ?? 3, date: '2026-03-10' },
+            ],
+          }))
+        : isInProgress
+          ? (topic.prerequisites ?? []).map((p, pi) => ({
+              id: p.id, title: p.title,
+              score: Math.max(1, (p.questions?.length ?? 3) - 1),
+              total: p.questions?.length ?? 3,
+              date: '2026-03-20',
+              attempts: [
+                { score: Math.max(1, (p.questions?.length ?? 3) - 2), total: p.questions?.length ?? 3, date: '2026-03-18' },
+                { score: Math.max(1, (p.questions?.length ?? 3) - 1), total: p.questions?.length ?? 3, date: '2026-03-20' },
+              ],
+            }))
+          : [];
 
       return {
         id:    topic.id,
         title: topic.title,
         status,
         progress,
-        prerequisites:     topic.prerequisites,
-        prerequisiteScores: isCompleted ? (topic.prerequisites ?? []).map(p => ({
-          id: p.id, title: p.title, score: 10, total: 10, date: '2026-03-10'
-        })) : isInProgress ? (topic.prerequisites ?? []).map(p => ({
-          id: p.id, title: p.title, score: 8, total: 10, date: '2026-03-20'
-        })) : [],
+        prerequisites:      topic.prerequisites,
+        prerequisiteScores,
         preEvaluationQuiz:  topic.preEvaluationQuiz,
         preEvaluationScore: (isCompleted || isInProgress) && preEvalTotal > 0
-          ? { score: preEvalTotal, total: preEvalTotal, date: '2026-03-11',
-              pastAnswers: Object.fromEntries((topic.preEvaluationQuiz ?? []).map(q => [q.id, q.correctAnswer])) }
+          ? {
+              score: preEvalTotal,
+              total: preEvalTotal,
+              date:  '2026-03-11',
+              pastAnswers: Object.fromEntries((topic.preEvaluationQuiz ?? []).map(q => [q.id, q.correctAnswer])),
+              attempts: [
+                { score: Math.max(1, preEvalTotal - 1), total: preEvalTotal, date: '2026-03-09' },
+                { score: preEvalTotal,                  total: preEvalTotal, date: '2026-03-11' },
+              ],
+            }
           : undefined,
-        postEvaluationQuiz: topic.postEvaluationQuiz,
+        postEvaluationQuiz:  topic.postEvaluationQuiz,
         postEvaluationScore: isCompleted && postEvalTotal > 0
-          ? { score: postEvalTotal, total: postEvalTotal, date: '2026-03-16',
-              pastAnswers: Object.fromEntries((topic.postEvaluationQuiz ?? []).map(q => [q.id, q.correctAnswer])) }
+          ? {
+              score: postEvalTotal,
+              total: postEvalTotal,
+              date:  '2026-03-16',
+              pastAnswers: Object.fromEntries((topic.postEvaluationQuiz ?? []).map(q => [q.id, q.correctAnswer])),
+              attempts: [
+                { score: Math.max(1, postEvalTotal - 1), total: postEvalTotal, date: '2026-03-14' },
+                { score: postEvalTotal,                  total: postEvalTotal, date: '2026-03-16' },
+              ],
+            }
           : undefined,
         subtopicsCompleted: isCompleted ? topic.subTopics.length : isInProgress ? 1 : 0,
         totalSubtopics:     topic.subTopics.length,
