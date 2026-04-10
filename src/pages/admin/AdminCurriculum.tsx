@@ -1,118 +1,25 @@
 import React, { useState } from 'react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { Modal } from '../../components/ui/Modal';
+import { CurriculumImportModal } from '../../components/CurriculumImportModal';
 import { 
   Plus, Edit2, Trash2, ChevronRight, 
   BookOpen, Layers, ListTree, AlertTriangle, Calculator,
   Video, HelpCircle, FileText, ArrowLeft, PlayCircle, CheckCircle2,
-  Network, ClipboardCheck, X, BarChart2
+  Network, ClipboardCheck, X, BarChart2, Upload
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell
 } from 'recharts';
-
-// --- Types ---
-interface Question {
-  id: string;
-  text: string;
-  type: 'text' | 'mcq' | 'boolean';
-  options?: string[];
-  correctAnswer: string;
-  explanation: string;
-  difficulty: 'Easy' | 'Medium' | 'Hard';
-}
-
-interface Prerequisite {
-  id: string;
-  title: string;
-  category: 'Major' | 'Intermediate' | 'Minor';
-}
-
-interface SubTopic { 
-  id: string; 
-  title: string; 
-  videoUrl?: string;
-  quizzes?: Question[];
-}
-interface Topic { 
-  id: string; 
-  title: string; 
-  sequence: number; 
-  subTopics: SubTopic[]; 
-  prerequisites?: Prerequisite[];
-  preEvaluationQuiz?: Question[];
-  postEvaluationQuiz?: Question[];
-}
-interface Class { id: string; name: string; curriculum: Topic[]; }
-interface Standard { id: string; name: string; classes: Class[]; }
+import {
+  Question, Prerequisite, SubTopic, Topic, CurriculumClass as Class, Standard,
+  INITIAL_CURRICULUM_DATA
+} from '../../data/adminMockData';
 
 type ViewLevel = 'standards' | 'classes' | 'topics' | 'subtopics';
 
-// --- Initial Mock Data ---
-const INITIAL_DATA: Standard[] = [
-  {
-    id: 'std-1',
-    name: 'Grade 9',
-    classes: [
-      {
-        id: 'cls-1',
-        name: 'Section A',
-        curriculum: [
-          {
-            id: 'top-1',
-            title: 'Algebraic Expressions',
-            sequence: 1,
-            prerequisites: [
-              { id: 'pre-1', title: 'Basic Arithmetic Operations', category: 'Major' },
-              { id: 'pre-2', title: 'Understanding Variables', category: 'Intermediate' }
-            ],
-            preEvaluationQuiz: [
-              {
-                id: 'pq-1',
-                text: 'What is 5 + 3 * 2?',
-                type: 'mcq',
-                options: ['16', '11', '10', '13'],
-                correctAnswer: '11',
-                explanation: 'According to order of operations (PEMDAS/BODMAS), multiplication is performed before addition. So, 3 * 2 = 6, and 5 + 6 = 11.',
-                difficulty: 'Easy'
-              }
-            ],
-            postEvaluationQuiz: [
-              {
-                id: 'postq-1',
-                text: 'Factorize: x^2 - 5x + 6',
-                type: 'mcq',
-                options: ['(x-2)(x-3)', '(x+2)(x+3)', '(x-1)(x-6)', '(x+1)(x-6)'],
-                correctAnswer: '(x-2)(x-3)',
-                explanation: 'The numbers that multiply to 6 and add to -5 are -2 and -3.',
-                difficulty: 'Medium'
-              }
-            ],
-            subTopics: [
-              { 
-                id: 'sub-1', 
-                title: 'Introduction to Polynomials', 
-                videoUrl: 'https://www.youtube.com/watch?v=NybHckSEQBI',
-                quizzes: [
-                  {
-                    id: 'q-1',
-                    text: 'What is the degree of the polynomial 3x^2 + 2x - 5?',
-                    type: 'mcq',
-                    options: ['1', '2', '3', '0'],
-                    correctAnswer: '2',
-                    explanation: 'The degree of a polynomial is the highest power of the variable in the expression. Here, the highest power of x is 2.',
-                    difficulty: 'Medium'
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    ]
-  }
-];
+const INITIAL_DATA: Standard[] = INITIAL_CURRICULUM_DATA;
 
 const getYoutubeEmbedUrl = (url: string) => {
   if (!url) return null;
@@ -149,6 +56,7 @@ const generateMockAnalytics = (questions: Question[]) => {
 
 export function AdminCurriculum() {
   const [data, setData] = useState<Standard[]>(INITIAL_DATA);
+  const [showImport, setShowImport] = useState(false);
   
   // Navigation State
   const [view, setView] = useState<ViewLevel>('standards');
@@ -158,7 +66,7 @@ export function AdminCurriculum() {
     topicId: '',
     subtopicId: ''
   });
-  const [activeTab, setActiveTab] = useState<'video' | 'quiz'>('video');
+  const [activeTab, setActiveTab] = useState<'video' | 'quiz' | 'quiz-analytics' | 'preeval-analytics' | 'posteval-analytics'>('video');
 
   // Modal State
   const [modal, setModal] = useState<{ isOpen: boolean; type: string; payload: any }>({
@@ -170,7 +78,7 @@ export function AdminCurriculum() {
   const navigateTo = (level: ViewLevel, ids: Partial<typeof selection> = {}) => {
     setSelection(prev => ({ ...prev, ...ids }));
     setView(level);
-    if (level === 'subtopics') setActiveTab('video');
+    if (level === 'subtopics') setActiveTab('video' as any);
   };
 
   const currentStandard = data.find(s => s.id === selection.standardId);
@@ -453,9 +361,17 @@ export function AdminCurriculum() {
     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-extrabold text-slate-900">Standards</h2>
-        <button onClick={() => openModal('add-standard')} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm flex items-center gap-1.5">
-          <Plus className="w-4 h-4" /> Add Standard
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowImport(true)}
+            className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700 transition-colors shadow-sm flex items-center gap-1.5"
+          >
+            <Upload className="w-4 h-4" /> Import CSV
+          </button>
+          <button onClick={() => openModal('add-standard')} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm flex items-center gap-1.5">
+            <Plus className="w-4 h-4" /> Add Standard
+          </button>
+        </div>
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -674,26 +590,177 @@ export function AdminCurriculum() {
     </div>
   );
 
-  const renderPreEvaluation = () => (
+  const renderAnalyticsPanel = (questions: Question[], accentColor: string) => {
+    if (!questions || questions.length === 0) {
+      return (
+        <div className="py-16 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-white">
+          <BarChart2 className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+          <h3 className="text-xl font-bold text-slate-900 mb-2">No Analytics Available</h3>
+          <p className="text-slate-500">Add questions to see student performance analytics.</p>
+        </div>
+      );
+    }
+    const analytics = generateMockAnalytics(questions);
+    const pieData = [
+      { name: 'Score', value: analytics.averageScore, fill: accentColor },
+      { name: 'Gap', value: 100 - analytics.averageScore, fill: '#e2e8f0' }
+    ];
+    return (
+      <div className="space-y-6">
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 flex flex-col items-center justify-center text-center">
+            <p className="text-xs font-bold text-blue-500 uppercase tracking-widest mb-1">Total Students</p>
+            <p className="text-4xl font-extrabold text-blue-900">{analytics.totalStudents}</p>
+          </div>
+          <div className="bg-green-50 border border-green-100 rounded-2xl p-5 flex flex-col items-center justify-center text-center">
+            <p className="text-xs font-bold text-green-500 uppercase tracking-widest mb-1">Average Score</p>
+            <p className="text-4xl font-extrabold text-green-900">{analytics.averageScore}%</p>
+          </div>
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col items-center justify-center">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Pass Rate</p>
+            <div className="relative w-20 h-20">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={28} outerRadius={38} startAngle={90} endAngle={-270} dataKey="value" stroke="none">
+                    {pieData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
+              <span className="absolute inset-0 flex items-center justify-center text-sm font-extrabold text-slate-900">{analytics.averageScore}%</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Bar Chart */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+          <h3 className="text-base font-extrabold text-slate-900 mb-1">Question-by-Question Performance</h3>
+          <p className="text-xs text-slate-500 mb-5">Correct vs incorrect answers per question across all students</p>
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={analytics.questionStats} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 600 }} dy={10} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 600 }} dx={-10} />
+                <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                <Legend wrapperStyle={{ paddingTop: '16px' }} />
+                <Bar dataKey="correct" name="Correct" stackId="a" fill="#22c55e" radius={[0,0,4,4]} maxBarSize={48} />
+                <Bar dataKey="incorrect" name="Incorrect" stackId="a" fill="#ef4444" radius={[4,4,0,0]} maxBarSize={48} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Per-question detail table */}
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100">
+            <h3 className="text-base font-extrabold text-slate-900">Per-Question Breakdown</h3>
+            <p className="text-xs text-slate-500 mt-0.5">Detailed statistics for every question in this quiz</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="py-3 px-5">#</th>
+                  <th className="py-3 px-5">Question</th>
+                  <th className="py-3 px-5 text-center">Correct</th>
+                  <th className="py-3 px-5 text-center">Incorrect</th>
+                  <th className="py-3 px-5 text-center">Total</th>
+                  <th className="py-3 px-5 text-right">Success Rate</th>
+                  <th className="py-3 px-5 text-right">Difficulty</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {analytics.questionStats.map((stat, idx) => {
+                  const q = questions[idx];
+                  return (
+                    <tr key={stat.questionId} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-3 px-5">
+                        <span className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center text-xs font-bold">Q{idx + 1}</span>
+                      </td>
+                      <td className="py-3 px-5 max-w-xs">
+                        <p className="text-sm font-medium text-slate-900 line-clamp-2">{stat.text}</p>
+                        <span className="text-xs text-slate-400 font-semibold">{q?.type === 'mcq' ? 'MCQ' : q?.type === 'boolean' ? 'True/False' : 'Short Answer'}</span>
+                      </td>
+                      <td className="py-3 px-5 text-center">
+                        <span className="text-sm font-bold text-green-600">{stat.correct}</span>
+                      </td>
+                      <td className="py-3 px-5 text-center">
+                        <span className="text-sm font-bold text-red-500">{stat.incorrect}</span>
+                      </td>
+                      <td className="py-3 px-5 text-center">
+                        <span className="text-sm font-medium text-slate-500">{analytics.totalStudents}</span>
+                      </td>
+                      <td className="py-3 px-5 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <div className="w-20 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${stat.successRate}%`, backgroundColor: stat.successRate >= 70 ? '#22c55e' : stat.successRate >= 40 ? '#f59e0b' : '#ef4444' }} />
+                          </div>
+                          <span className={`text-xs font-extrabold ${
+                            stat.successRate >= 70 ? 'text-green-600' : stat.successRate >= 40 ? 'text-amber-600' : 'text-red-600'
+                          }`}>{stat.successRate}%</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-5 text-right">
+                        <span className={`px-2 py-0.5 rounded-md text-xs font-bold ${
+                          q?.difficulty === 'Hard' ? 'bg-red-50 text-red-700' :
+                          q?.difficulty === 'Medium' ? 'bg-amber-50 text-amber-700' :
+                          'bg-green-50 text-green-700'
+                        }`}>{q?.difficulty}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderPreEvaluation = () => {
+    const hasQuestions = (currentTopic?.preEvaluationQuiz?.length ?? 0) > 0;
+    const preEvalTab = selection.subtopicId === 'preevaluation';
+    const showAnalytics = activeTab === ('preeval-analytics' as any);
+    return (
     <div className="space-y-4">
       <div className="flex justify-between items-center mb-2">
         <div>
           <h2 className="text-xl font-extrabold text-slate-900">Pre-evaluation Quiz</h2>
           <p className="text-sm text-slate-500">Assess students' readiness before they start this topic.</p>
         </div>
-        <div className="flex gap-2">
-          {currentTopic?.preEvaluationQuiz && currentTopic.preEvaluationQuiz.length > 0 && (
-            <button onClick={() => openModal('quiz-analytics', { title: 'Pre-evaluation Quiz Analytics', questions: currentTopic.preEvaluationQuiz })} className="px-4 py-2 bg-blue-50 text-blue-700 rounded-xl text-sm font-bold hover:bg-blue-100 transition-colors flex items-center gap-2">
-              <BarChart2 className="w-4 h-4" /> Analytics
-            </button>
-          )}
-          <button onClick={() => openModal('add-preeval-quiz')} className="px-4 py-2 bg-orange-600 text-white rounded-xl text-sm font-bold hover:bg-orange-700 transition-colors shadow-sm flex items-center gap-2">
-            <Plus className="w-4 h-4" /> Add Question
-          </button>
-        </div>
+        <button onClick={() => openModal('add-preeval-quiz')} className="px-4 py-2 bg-orange-600 text-white rounded-xl text-sm font-bold hover:bg-orange-700 transition-colors shadow-sm flex items-center gap-2">
+          <Plus className="w-4 h-4" /> Add Question
+        </button>
       </div>
 
-      {(!currentTopic?.preEvaluationQuiz || currentTopic.preEvaluationQuiz.length === 0) ? (
+      {/* Tabs */}
+      {hasQuestions && (
+        <div className="flex gap-1 border-b border-slate-200 mb-2">
+          <button
+            onClick={() => setActiveTab('video' as any)}
+            className={`px-4 py-2 font-bold text-sm flex items-center gap-2 border-b-2 transition-colors ${
+              !showAnalytics ? 'border-orange-500 text-orange-600' : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <HelpCircle className="w-4 h-4" /> Questions
+            <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs ml-1">{currentTopic?.preEvaluationQuiz?.length ?? 0}</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('preeval-analytics' as any)}
+            className={`px-4 py-2 font-bold text-sm flex items-center gap-2 border-b-2 transition-colors ${
+              showAnalytics ? 'border-orange-500 text-orange-600' : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <BarChart2 className="w-4 h-4" /> Analytics
+          </button>
+        </div>
+      )}
+
+      {showAnalytics ? (
+        renderAnalyticsPanel(currentTopic?.preEvaluationQuiz ?? [], '#f97316')
+      ) : (!currentTopic?.preEvaluationQuiz || currentTopic.preEvaluationQuiz.length === 0) ? (
         <div className="py-16 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-white">
           <ClipboardCheck className="w-16 h-16 text-slate-300 mx-auto mb-4" />
           <h3 className="text-xl font-bold text-slate-900 mb-2">No Pre-evaluation Questions</h3>
@@ -708,28 +775,50 @@ export function AdminCurriculum() {
         </div>
       )}
     </div>
-  );
+    );
+  };
 
-  const renderPostEvaluation = () => (
+  const renderPostEvaluation = () => {
+    const hasQuestions = (currentTopic?.postEvaluationQuiz?.length ?? 0) > 0;
+    const showAnalytics = activeTab === ('posteval-analytics' as any);
+    return (
     <div className="space-y-4">
       <div className="flex justify-between items-center mb-2">
         <div>
           <h2 className="text-xl font-extrabold text-slate-900">Section End Quiz (Post-evaluation)</h2>
           <p className="text-sm text-slate-500">Assess students' understanding after they complete this topic.</p>
         </div>
-        <div className="flex gap-2">
-          {currentTopic?.postEvaluationQuiz && currentTopic.postEvaluationQuiz.length > 0 && (
-            <button onClick={() => openModal('quiz-analytics', { title: 'Section End Quiz Analytics', questions: currentTopic.postEvaluationQuiz })} className="px-4 py-2 bg-blue-50 text-blue-700 rounded-xl text-sm font-bold hover:bg-blue-100 transition-colors flex items-center gap-2">
-              <BarChart2 className="w-4 h-4" /> Analytics
-            </button>
-          )}
-          <button onClick={() => openModal('add-posteval-quiz')} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-colors shadow-sm flex items-center gap-2">
-            <Plus className="w-4 h-4" /> Add Question
-          </button>
-        </div>
+        <button onClick={() => openModal('add-posteval-quiz')} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-colors shadow-sm flex items-center gap-2">
+          <Plus className="w-4 h-4" /> Add Question
+        </button>
       </div>
 
-      {(!currentTopic?.postEvaluationQuiz || currentTopic.postEvaluationQuiz.length === 0) ? (
+      {/* Tabs */}
+      {hasQuestions && (
+        <div className="flex gap-1 border-b border-slate-200 mb-2">
+          <button
+            onClick={() => setActiveTab('video' as any)}
+            className={`px-4 py-2 font-bold text-sm flex items-center gap-2 border-b-2 transition-colors ${
+              !showAnalytics ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <HelpCircle className="w-4 h-4" /> Questions
+            <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs ml-1">{currentTopic?.postEvaluationQuiz?.length ?? 0}</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('posteval-analytics' as any)}
+            className={`px-4 py-2 font-bold text-sm flex items-center gap-2 border-b-2 transition-colors ${
+              showAnalytics ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <BarChart2 className="w-4 h-4" /> Analytics
+          </button>
+        </div>
+      )}
+
+      {showAnalytics ? (
+        renderAnalyticsPanel(currentTopic?.postEvaluationQuiz ?? [], '#6366f1')
+      ) : (!currentTopic?.postEvaluationQuiz || currentTopic.postEvaluationQuiz.length === 0) ? (
         <div className="py-16 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-white">
           <ClipboardCheck className="w-16 h-16 text-slate-300 mx-auto mb-4" />
           <h3 className="text-xl font-bold text-slate-900 mb-2">No Section End Questions</h3>
@@ -744,7 +833,8 @@ export function AdminCurriculum() {
         </div>
       )}
     </div>
-  );
+    );
+  };
 
   const renderSubtopics = () => (
     <div className="flex flex-col md:flex-row gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500 min-h-[600px]">
@@ -758,7 +848,7 @@ export function AdminCurriculum() {
           {/* Topic Level Items */}
           <div className="space-y-2">
             <div 
-              onClick={() => setSelection(prev => ({ ...prev, subtopicId: 'prerequisites' }))}
+              onClick={() => { setSelection(prev => ({ ...prev, subtopicId: 'prerequisites' })); setActiveTab('video' as any); }}
               className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex items-center gap-3 ${
                 selection.subtopicId === 'prerequisites' ? 'border-purple-600 bg-purple-50 text-purple-900' : 'border-transparent hover:bg-slate-50 hover:border-slate-200 text-slate-700'
               }`}
@@ -770,7 +860,7 @@ export function AdminCurriculum() {
             </div>
             
             <div 
-              onClick={() => setSelection(prev => ({ ...prev, subtopicId: 'preevaluation' }))}
+              onClick={() => { setSelection(prev => ({ ...prev, subtopicId: 'preevaluation' })); setActiveTab('video' as any); }}
               className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex items-center gap-3 ${
                 selection.subtopicId === 'preevaluation' ? 'border-orange-600 bg-orange-50 text-orange-900' : 'border-transparent hover:bg-slate-50 hover:border-slate-200 text-slate-700'
               }`}
@@ -782,7 +872,7 @@ export function AdminCurriculum() {
             </div>
 
             <div 
-              onClick={() => setSelection(prev => ({ ...prev, subtopicId: 'postevaluation' }))}
+              onClick={() => { setSelection(prev => ({ ...prev, subtopicId: 'postevaluation' })); setActiveTab('video' as any); }}
               className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex items-center gap-3 ${
                 selection.subtopicId === 'postevaluation' ? 'border-indigo-600 bg-indigo-50 text-indigo-900' : 'border-transparent hover:bg-slate-50 hover:border-slate-200 text-slate-700'
               }`}
@@ -802,7 +892,7 @@ export function AdminCurriculum() {
             {currentTopic?.subTopics.map((sub, index) => (
               <div 
                 key={sub.id} 
-                onClick={() => setSelection(prev => ({ ...prev, subtopicId: sub.id }))}
+                onClick={() => { setSelection(prev => ({ ...prev, subtopicId: sub.id })); setActiveTab('video'); }}
                 className={`p-3 rounded-xl border-2 cursor-pointer transition-all group relative ${
                   selection.subtopicId === sub.id 
                     ? 'border-blue-600 bg-blue-50' 
@@ -869,6 +959,14 @@ export function AdminCurriculum() {
                 <HelpCircle className="w-4 h-4" /> Quiz Management
                 <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs ml-1">{currentSubtopic.quizzes?.length || 0}</span>
               </button>
+              {(currentSubtopic.quizzes?.length ?? 0) > 0 && (
+                <button 
+                  onClick={() => setActiveTab('quiz-analytics')}
+                  className={`px-4 py-2 font-bold text-sm flex items-center gap-2 border-b-2 transition-colors ${activeTab === 'quiz-analytics' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
+                >
+                  <BarChart2 className="w-4 h-4" /> Quiz Analytics
+                </button>
+              )}
             </div>
 
             {/* Tab Content: Video */}
@@ -912,16 +1010,9 @@ export function AdminCurriculum() {
                     <h3 className="text-lg font-bold text-slate-900">Assessment Questions</h3>
                     <p className="text-sm text-slate-500">Create quizzes to test student understanding.</p>
                   </div>
-                  <div className="flex gap-2">
-                    {currentSubtopic.quizzes && currentSubtopic.quizzes.length > 0 && (
-                      <button onClick={() => openModal('quiz-analytics', { title: 'Sub-topic Quiz Analytics', questions: currentSubtopic.quizzes })} className="px-4 py-2 bg-blue-50 text-blue-700 rounded-xl text-sm font-bold hover:bg-blue-100 transition-colors flex items-center gap-2">
-                        <BarChart2 className="w-4 h-4" /> Analytics
-                      </button>
-                    )}
-                    <button onClick={() => openModal('add-quiz')} className="px-4 py-2 bg-green-600 text-white rounded-xl text-sm font-bold hover:bg-green-700 transition-colors shadow-sm flex items-center gap-2">
-                      <Plus className="w-4 h-4" /> Add Question
-                    </button>
-                  </div>
+                  <button onClick={() => openModal('add-quiz')} className="px-4 py-2 bg-green-600 text-white rounded-xl text-sm font-bold hover:bg-green-700 transition-colors shadow-sm flex items-center gap-2">
+                    <Plus className="w-4 h-4" /> Add Question
+                  </button>
                 </div>
 
                 {(!currentSubtopic.quizzes || currentSubtopic.quizzes.length === 0) ? (
@@ -938,6 +1029,22 @@ export function AdminCurriculum() {
                     {currentSubtopic.quizzes.map((quiz, index) => renderQuizCard(quiz, index, 'edit-quiz', 'quiz'))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Tab Content: Quiz Analytics */}
+            {activeTab === 'quiz-analytics' && (
+              <div>
+                <div className="flex items-center gap-3 mb-6 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                  <div className="p-2.5 bg-blue-50 rounded-xl">
+                    <BarChart2 className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">{currentSubtopic.title} — Quiz Analytics</h3>
+                    <p className="text-sm text-slate-500">Student performance across all {currentSubtopic.quizzes?.length ?? 0} questions</p>
+                  </div>
+                </div>
+                {renderAnalyticsPanel(currentSubtopic.quizzes ?? [], '#3b82f6')}
               </div>
             )}
           </div>
@@ -984,7 +1091,7 @@ export function AdminCurriculum() {
 
       {/* Generic Form Modal */}
       <Modal 
-        isOpen={modal.isOpen && modal.type !== 'delete-confirm' && modal.type !== 'edit-video' && modal.type !== 'add-quiz' && modal.type !== 'edit-quiz'} 
+        isOpen={modal.isOpen && modal.type !== 'delete-confirm' && modal.type !== 'edit-video' && modal.type !== 'add-quiz' && modal.type !== 'edit-quiz' && modal.type !== 'quiz-analytics' && modal.type !== 'add-preeval-quiz' && modal.type !== 'edit-preeval-quiz' && modal.type !== 'add-posteval-quiz' && modal.type !== 'edit-posteval-quiz' && modal.type !== 'add-prerequisite' && modal.type !== 'edit-prerequisite'} 
         onClose={closeModal} 
         title={modal.type.includes('add') ? `Add ${modal.type.split('-')[1]}` : `Edit ${modal.type.split('-')[1]}`}
       >
@@ -1070,7 +1177,7 @@ export function AdminCurriculum() {
       </Modal>
 
       {/* Quiz Modal */}
-      <Modal size="5xl" isOpen={modal.isOpen && (modal.type === 'add-quiz' || modal.type === 'edit-quiz' || modal.type === 'add-preeval-quiz' || modal.type === 'edit-preeval-quiz')} onClose={closeModal} title={modal.type.includes('add') ? "Add Question" : "Edit Question"}>
+      <Modal size="5xl" isOpen={modal.isOpen && (modal.type === 'add-quiz' || modal.type === 'edit-quiz' || modal.type === 'add-preeval-quiz' || modal.type === 'edit-preeval-quiz' || modal.type === 'add-posteval-quiz' || modal.type === 'edit-posteval-quiz')} onClose={closeModal} title={modal.type.includes('add') ? "Add Question" : "Edit Question"}>
         <form onSubmit={handleSave} className="space-y-6 py-4 max-h-[85vh] overflow-y-auto px-4">
           <div className="space-y-2">
             <label className="text-sm font-extrabold text-slate-800 block">Question Text</label>
@@ -1207,114 +1314,16 @@ export function AdminCurriculum() {
         </form>
       </Modal>
 
-      {/* Analytics Modal */}
-      {modal.type === 'quiz-analytics' && modal.payload && (
-        <Modal size="5xl" isOpen={true} onClose={closeModal} title={modal.payload.title}>
-          <div className="p-6 space-y-8 max-h-[85vh] overflow-y-auto">
-            {(() => {
-              const analytics = generateMockAnalytics(modal.payload.questions);
-              const pieData = [
-                { name: 'Average Score', value: analytics.averageScore, color: '#3b82f6' },
-                { name: 'Remaining', value: 100 - analytics.averageScore, color: '#e2e8f0' }
-              ];
-
-              return (
-                <>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-blue-50 border border-blue-100 rounded-2xl p-6 flex flex-col items-center justify-center text-center">
-                      <h3 className="text-sm font-bold text-blue-600 uppercase tracking-wider mb-2">Total Students</h3>
-                      <p className="text-4xl font-extrabold text-blue-900">{analytics.totalStudents}</p>
-                    </div>
-                    <div className="bg-green-50 border border-green-100 rounded-2xl p-6 flex flex-col items-center justify-center text-center">
-                      <h3 className="text-sm font-bold text-green-600 uppercase tracking-wider mb-2">Average Score</h3>
-                      <p className="text-4xl font-extrabold text-green-900">{analytics.averageScore}%</p>
-                    </div>
-                    <div className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col items-center justify-center">
-                      <div className="h-24 w-24">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={pieData}
-                              cx="50%"
-                              cy="50%"
-                              innerRadius={30}
-                              outerRadius={40}
-                              startAngle={90}
-                              endAngle={-270}
-                              dataKey="value"
-                              stroke="none"
-                            >
-                              {pieData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={entry.color} />
-                              ))}
-                            </Pie>
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                    <h3 className="text-lg font-bold text-slate-900 mb-6">Question Performance</h3>
-                    <div className="h-80 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={analytics.questionStats} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 600 }} dy={10} />
-                          <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 600 }} dx={-10} />
-                          <RechartsTooltip 
-                            cursor={{ fill: '#f8fafc' }}
-                            contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                          />
-                          <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                          <Bar dataKey="correct" name="Correct Answers" stackId="a" fill="#22c55e" radius={[0, 0, 4, 4]} maxBarSize={50} />
-                          <Bar dataKey="incorrect" name="Incorrect Answers" stackId="a" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={50} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-
-                  <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="bg-slate-50 border-b border-slate-200">
-                          <th className="py-4 px-6 text-xs font-bold text-slate-500 uppercase tracking-wider">Question</th>
-                          <th className="py-4 px-6 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Correct</th>
-                          <th className="py-4 px-6 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Incorrect</th>
-                          <th className="py-4 px-6 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Success Rate</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {analytics.questionStats.map((stat, idx) => (
-                          <tr key={stat.questionId} className="hover:bg-slate-50 transition-colors">
-                            <td className="py-4 px-6">
-                              <div className="flex items-center gap-3">
-                                <span className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-xs font-bold shrink-0">Q{idx + 1}</span>
-                                <span className="text-sm font-medium text-slate-900 line-clamp-1">{stat.text}</span>
-                              </div>
-                            </td>
-                            <td className="py-4 px-6 text-center text-sm font-bold text-green-600">{stat.correct}</td>
-                            <td className="py-4 px-6 text-center text-sm font-bold text-red-600">{stat.incorrect}</td>
-                            <td className="py-4 px-6 text-right">
-                              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${
-                                stat.successRate >= 70 ? 'bg-green-100 text-green-700' :
-                                stat.successRate >= 40 ? 'bg-amber-100 text-amber-700' :
-                                'bg-red-100 text-red-700'
-                              }`}>
-                                {stat.successRate}%
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-        </Modal>
-      )}
+      {/* CSV Import Modal */}
+      <CurriculumImportModal
+        isOpen={showImport}
+        onClose={() => setShowImport(false)}
+        existingData={data}
+        onImport={(merged) => {
+          setData(merged);
+          setShowImport(false);
+        }}
+      />
 
     </AdminLayout>
   );

@@ -2,44 +2,7 @@ import React, { useState } from 'react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { Modal } from '../../components/ui/Modal';
 import { Users, Plus, Edit2, Trash2, Search, Mail, Phone, User, AlertTriangle, Send, BookOpen } from 'lucide-react';
-
-interface Student {
-  id: string;
-  studentName: string;
-  studentEmail: string;
-  studentPhone: string;
-  parentName: string;
-  parentEmail: string;
-  parentPhone: string;
-  standardId: string;
-  classId: string;
-}
-
-// Mock initial data
-const MOCK_STANDARDS = [
-  { id: 'std-1', name: 'Grade 9' },
-  { id: 'std-2', name: 'Grade 10' },
-];
-
-const MOCK_CLASSES = [
-  { id: 'cls-1', standardId: 'std-1', name: 'Section A' },
-  { id: 'cls-2', standardId: 'std-1', name: 'Section B' },
-  { id: 'cls-3', standardId: 'std-2', name: 'Section A' },
-];
-
-const INITIAL_STUDENTS: Student[] = [
-  {
-    id: '1',
-    studentName: 'Alice Johnson',
-    studentEmail: 'alice@example.com',
-    studentPhone: '+1234567890',
-    parentName: 'Bob Johnson',
-    parentEmail: 'bob@example.com',
-    parentPhone: '+1987654321',
-    standardId: 'std-1',
-    classId: 'cls-1'
-  }
-];
+import { Student, MOCK_STANDARDS, MOCK_CLASSES, INITIAL_STUDENTS } from '../../data/adminMockData';
 
 export function AdminStudents() {
   const [selectedStandardId, setSelectedStandardId] = useState<string>('std-1');
@@ -274,7 +237,7 @@ export function AdminStudents() {
       </Modal>
 
       {/* Add/Edit Modal */}
-      <Modal isOpen={modal.isOpen && (modal.type === 'add' || modal.type === 'edit')} onClose={closeModal} title={modal.type === 'add' ? 'Add New Student' : 'Edit Student'}>
+      <Modal isOpen={modal.isOpen && (modal.type === 'add' || modal.type === 'edit')} onClose={closeModal} title={modal.type === 'add' ? 'Add New Student' : 'Edit Student'} size="2xl">
         {notificationResult ? (
           <div className="py-8 text-center">
             <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${notificationResult.success ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'}`}>
@@ -287,109 +250,110 @@ export function AdminStudents() {
             </button>
           </div>
         ) : (
-          <form onSubmit={handleSave} className="space-y-6 py-2 max-h-[70vh] overflow-y-auto px-1">
+          <form onSubmit={handleSave} className="space-y-4">
             {/* Enrollment Section */}
-            <div>
-              <h4 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 flex items-center gap-2">
-                <BookOpen className="w-4 h-4 text-emerald-600" /> Enrollment Details
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-4">
+              <h4 className="text-xs font-extrabold text-emerald-700 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <div className="p-1.5 bg-emerald-100 rounded-lg"><BookOpen className="w-3.5 h-3.5 text-emerald-600" /></div>
+                Enrollment Details
               </h4>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-sm font-bold text-slate-700 block">Standard</label>
-                  <select 
-                    required 
-                    value={formData.standardId || ''} 
+                  <label className="text-xs font-bold text-slate-600 block uppercase tracking-wide">Standard</label>
+                  <select
+                    required
+                    value={formData.standardId || ''}
                     onChange={e => {
                       const newStdId = e.target.value;
                       const firstClass = MOCK_CLASSES.find(c => c.standardId === newStdId);
-                      setFormData({
-                        ...formData, 
-                        standardId: newStdId,
-                        classId: firstClass ? firstClass.id : ''
-                      });
-                    }} 
-                    className="block w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 sm:text-sm transition-all outline-none font-medium text-slate-900"
+                      setFormData({ ...formData, standardId: newStdId, classId: firstClass ? firstClass.id : '' });
+                    }}
+                    className="block w-full px-4 py-2.5 bg-white border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-sm transition-all outline-none font-semibold text-slate-900"
                   >
                     <option value="" disabled>Select Standard</option>
-                    {MOCK_STANDARDS.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
+                    {MOCK_STANDARDS.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-sm font-bold text-slate-700 block">Section</label>
-                  <select 
-                    required 
-                    value={formData.classId || ''} 
-                    onChange={e => setFormData({...formData, classId: e.target.value})} 
-                    className="block w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 sm:text-sm transition-all outline-none font-medium text-slate-900"
+                  <label className="text-xs font-bold text-slate-600 block uppercase tracking-wide">Section</label>
+                  <select
+                    required
+                    value={formData.classId || ''}
+                    onChange={e => setFormData({ ...formData, classId: e.target.value })}
+                    className="block w-full px-4 py-2.5 bg-white border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-sm transition-all outline-none font-semibold text-slate-900"
                   >
                     <option value="" disabled>Select Section</option>
-                    {MOCK_CLASSES.filter(c => c.standardId === formData.standardId).map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
+                    {MOCK_CLASSES.filter(c => c.standardId === formData.standardId).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
               </div>
             </div>
 
-            <div className="h-px bg-slate-200 w-full"></div>
-
-            {/* Student Section */}
-            <div>
-              <h4 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 flex items-center gap-2">
-                <User className="w-4 h-4 text-blue-600" /> Student Details
-              </h4>
-              <div className="space-y-4">
+            {/* Student + Parent side by side */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* Student Section */}
+              <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4 space-y-3">
+                <h4 className="text-xs font-extrabold text-blue-700 uppercase tracking-widest flex items-center gap-2">
+                  <div className="p-1.5 bg-blue-100 rounded-lg"><User className="w-3.5 h-3.5 text-blue-600" /></div>
+                  Student Details
+                </h4>
                 <div className="space-y-1.5">
-                  <label className="text-sm font-bold text-slate-700 block">Student Name</label>
-                  <input type="text" required value={formData.studentName || ''} onChange={e => setFormData({...formData, studentName: e.target.value})} className="block w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 sm:text-sm transition-all outline-none font-medium text-slate-900" />
+                  <label className="text-xs font-bold text-slate-600 block uppercase tracking-wide">Full Name</label>
+                  <input type="text" required placeholder="e.g. Sarah Connor" value={formData.studentName || ''} onChange={e => setFormData({ ...formData, studentName: e.target.value })} className="block w-full px-3 py-2.5 bg-white border border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm transition-all outline-none font-medium text-slate-900 placeholder:text-slate-400" />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-bold text-slate-700 block">Email Address</label>
-                    <input type="email" required value={formData.studentEmail || ''} onChange={e => setFormData({...formData, studentEmail: e.target.value})} className="block w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 sm:text-sm transition-all outline-none font-medium text-slate-900" />
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-600 block uppercase tracking-wide">Email Address</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                    <input type="email" required placeholder="student@example.com" value={formData.studentEmail || ''} onChange={e => setFormData({ ...formData, studentEmail: e.target.value })} className="block w-full pl-9 pr-3 py-2.5 bg-white border border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm transition-all outline-none font-medium text-slate-900 placeholder:text-slate-400" />
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-bold text-slate-700 block">Phone Number</label>
-                    <input type="tel" required value={formData.studentPhone || ''} onChange={e => setFormData({...formData, studentPhone: e.target.value})} className="block w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 sm:text-sm transition-all outline-none font-medium text-slate-900" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-600 block uppercase tracking-wide">Phone Number</label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                    <input type="tel" required placeholder="+1 234 567 8900" value={formData.studentPhone || ''} onChange={e => setFormData({ ...formData, studentPhone: e.target.value })} className="block w-full pl-9 pr-3 py-2.5 bg-white border border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm transition-all outline-none font-medium text-slate-900 placeholder:text-slate-400" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Parent Section */}
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-4 space-y-3">
+                <h4 className="text-xs font-extrabold text-indigo-700 uppercase tracking-widest flex items-center gap-2">
+                  <div className="p-1.5 bg-indigo-100 rounded-lg"><Users className="w-3.5 h-3.5 text-indigo-600" /></div>
+                  Parent / Guardian
+                </h4>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-600 block uppercase tracking-wide">Full Name</label>
+                  <input type="text" required placeholder="e.g. John Connor" value={formData.parentName || ''} onChange={e => setFormData({ ...formData, parentName: e.target.value })} className="block w-full px-3 py-2.5 bg-white border border-indigo-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm transition-all outline-none font-medium text-slate-900 placeholder:text-slate-400" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-600 block uppercase tracking-wide">Email Address</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                    <input type="email" required placeholder="parent@example.com" value={formData.parentEmail || ''} onChange={e => setFormData({ ...formData, parentEmail: e.target.value })} className="block w-full pl-9 pr-3 py-2.5 bg-white border border-indigo-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm transition-all outline-none font-medium text-slate-900 placeholder:text-slate-400" />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-600 block uppercase tracking-wide">Phone Number</label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                    <input type="tel" required placeholder="+1 234 567 8900" value={formData.parentPhone || ''} onChange={e => setFormData({ ...formData, parentPhone: e.target.value })} className="block w-full pl-9 pr-3 py-2.5 bg-white border border-indigo-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm transition-all outline-none font-medium text-slate-900 placeholder:text-slate-400" />
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="h-px bg-slate-200 w-full"></div>
-
-            {/* Parent Section */}
-            <div>
-              <h4 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 flex items-center gap-2">
-                <Users className="w-4 h-4 text-indigo-600" /> Parent / Guardian Details
-              </h4>
-              <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-sm font-bold text-slate-700 block">Parent Name</label>
-                  <input type="text" required value={formData.parentName || ''} onChange={e => setFormData({...formData, parentName: e.target.value})} className="block w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 sm:text-sm transition-all outline-none font-medium text-slate-900" />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-bold text-slate-700 block">Email Address</label>
-                    <input type="email" required value={formData.parentEmail || ''} onChange={e => setFormData({...formData, parentEmail: e.target.value})} className="block w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 sm:text-sm transition-all outline-none font-medium text-slate-900" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-bold text-slate-700 block">Phone Number</label>
-                    <input type="tel" required value={formData.parentPhone || ''} onChange={e => setFormData({...formData, parentPhone: e.target.value})} className="block w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 sm:text-sm transition-all outline-none font-medium text-slate-900" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-4 flex gap-3 sticky bottom-0 bg-white pb-2">
-              <button type="button" onClick={closeModal} disabled={isNotifying} className="flex-1 py-3 px-4 border border-slate-200 rounded-xl font-bold text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50">Cancel</button>
-              <button type="submit" disabled={isNotifying} className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-sm flex justify-center items-center gap-2 disabled:opacity-50">
+            {/* Footer Actions */}
+            <div className="flex gap-3 pt-2 border-t border-slate-100">
+              <button type="button" onClick={closeModal} disabled={isNotifying} className="flex-1 py-2.5 px-4 border border-slate-200 rounded-xl font-bold text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50 text-sm">
+                Cancel
+              </button>
+              <button type="submit" disabled={isNotifying} className="flex-[2] py-2.5 px-4 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 active:bg-blue-800 transition-colors shadow-sm flex justify-center items-center gap-2 disabled:opacity-60 text-sm">
                 {isNotifying ? (
-                  <span className="animate-pulse">Sending Notifications...</span>
+                  <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Sending Notifications...</>
                 ) : (
-                  <>Save & Notify</>
+                  <><Send className="w-4 h-4" /> Save & Notify</>
                 )}
               </button>
             </div>

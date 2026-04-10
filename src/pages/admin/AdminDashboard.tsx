@@ -1,143 +1,326 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { motion } from 'motion/react';
-import { Users, BookOpen, TrendingUp, Activity, MoreVertical } from 'lucide-react';
+import { Users, BookOpen, TrendingUp, FileQuestion, Layers, ClipboardList, Video, CheckCircle2, GraduationCap } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import {
+  MOCK_STANDARDS, MOCK_CLASSES, INITIAL_STUDENTS, INITIAL_CURRICULUM_DATA
+} from '../../data/adminMockData';
 
 export function AdminDashboard() {
+  const navigate = useNavigate();
+
   const containerVariants = {
     hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: { staggerChildren: 0.1 }
-    }
+    show: { opacity: 1, transition: { staggerChildren: 0.08 } }
   };
-
   const itemVariants = {
     hidden: { opacity: 0, y: 20 },
-    show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
+    show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
   };
 
-  const stats = [
-    { title: 'Total Students', value: '2,845', change: '+12.5%', icon: Users, color: 'text-blue-600', bgColor: 'bg-blue-100' },
-    { title: 'Active Courses', value: '48', change: '+4', icon: BookOpen, color: 'text-purple-600', bgColor: 'bg-purple-100' },
-    { title: 'Avg. Engagement', value: '86%', change: '+2.1%', icon: Activity, color: 'text-green-600', bgColor: 'bg-green-100' },
-    { title: 'Platform Revenue', value: '$12,450', change: '+8.4%', icon: TrendingUp, color: 'text-orange-600', bgColor: 'bg-orange-100' },
-  ];
+  // ── Computed stats ────────────────────────────────────────────────────────
+  const stats = useMemo(() => {
+    const totalStudents = INITIAL_STUDENTS.length;
+    const totalStandards = MOCK_STANDARDS.length;
+    const totalSections = MOCK_CLASSES.length;
 
-  const recentStudents = [
-    { id: 1, name: 'Arjun Sharma', grade: 'Grade 9', joinDate: 'Today, 10:23 AM', status: 'Active' },
-    { id: 2, name: 'Priya Patel', grade: 'Grade 8', joinDate: 'Today, 09:15 AM', status: 'Active' },
-    { id: 3, name: 'Rahul Kumar', grade: 'Grade 10', joinDate: 'Yesterday', status: 'Pending' },
-    { id: 4, name: 'Sneha Gupta', grade: 'Grade 7', joinDate: 'Yesterday', status: 'Active' },
+    let totalTopics = 0;
+    let totalSubTopics = 0;
+    let totalQuizQuestions = 0;
+    let videoCoverage = 0;
+    let totalSubtopicCount = 0;
+
+    for (const std of INITIAL_CURRICULUM_DATA) {
+      for (const cls of std.classes) {
+        totalTopics += cls.curriculum.length;
+        for (const topic of cls.curriculum) {
+          totalQuizQuestions += (topic.preEvaluationQuiz?.length ?? 0);
+          totalQuizQuestions += (topic.postEvaluationQuiz?.length ?? 0);
+          for (const sub of topic.subTopics) {
+            totalSubTopics++;
+            totalSubtopicCount++;
+            totalQuizQuestions += (sub.quizzes?.length ?? 0);
+            if (sub.videoUrl) videoCoverage++;
+          }
+        }
+      }
+    }
+
+    const videoCoveragePct = totalSubtopicCount > 0
+      ? Math.round((videoCoverage / totalSubtopicCount) * 100)
+      : 0;
+
+    return { totalStudents, totalStandards, totalSections, totalTopics, totalSubTopics, totalQuizQuestions, videoCoveragePct };
+  }, []);
+
+  // ── Enrollment breakdown per standard + section ───────────────────────────
+  const enrollmentRows = useMemo(() => {
+    return MOCK_STANDARDS.flatMap(std => {
+      const sections = MOCK_CLASSES.filter(c => c.standardId === std.id);
+      return sections.map(sec => {
+        const count = INITIAL_STUDENTS.filter(s => s.standardId === std.id && s.classId === sec.id).length;
+        const topicsForSection = INITIAL_CURRICULUM_DATA
+          .find(s => s.id === std.id)
+          ?.classes.find(c => c.id === sec.id)
+          ?.curriculum.length ?? 0;
+        return { standard: std.name, section: sec.name, students: count, topics: topicsForSection };
+      });
+    });
+  }, []);
+
+  // ── Curriculum topic overview ─────────────────────────────────────────────
+  const curriculumRows = useMemo(() => {
+    const rows: { standard: string; topic: string; subtopics: number; questions: number; hasVideo: boolean }[] = [];
+    for (const std of INITIAL_CURRICULUM_DATA) {
+      for (const cls of std.classes) {
+        for (const topic of cls.curriculum) {
+          const questions =
+            (topic.preEvaluationQuiz?.length ?? 0) +
+            (topic.postEvaluationQuiz?.length ?? 0) +
+            topic.subTopics.reduce((a, s) => a + (s.quizzes?.length ?? 0), 0);
+          const hasVideo = topic.subTopics.some(s => !!s.videoUrl);
+          rows.push({ standard: std.name, topic: topic.title, subtopics: topic.subTopics.length, questions, hasVideo });
+        }
+      }
+    }
+    return rows;
+  }, []);
+
+  // ── Recent 5 students (latest joinedAt) ───────────────────────────────────
+  const recentStudents = useMemo(() => {
+    return [...INITIAL_STUDENTS]
+      .sort((a, b) => new Date(b.joinedAt ?? '').getTime() - new Date(a.joinedAt ?? '').getTime())
+      .slice(0, 5)
+      .map(s => ({
+        ...s,
+        standardName: MOCK_STANDARDS.find(st => st.id === s.standardId)?.name ?? '',
+        sectionName: MOCK_CLASSES.find(c => c.classId === s.classId || c.id === s.classId)?.name ?? '',
+      }));
+  }, []);
+
+  const statCards = [
+    {
+      title: 'Total Students',
+      value: stats.totalStudents,
+      sub: `Across ${stats.totalStandards} standards`,
+      icon: Users,
+      color: 'text-blue-600',
+      bg: 'bg-blue-50',
+      border: 'border-blue-100',
+    },
+    {
+      title: 'Standards & Sections',
+      value: `${stats.totalStandards} / ${stats.totalSections}`,
+      sub: `${stats.totalSections} active sections`,
+      icon: Layers,
+      color: 'text-indigo-600',
+      bg: 'bg-indigo-50',
+      border: 'border-indigo-100',
+    },
+    {
+      title: 'Curriculum Topics',
+      value: stats.totalTopics,
+      sub: `${stats.totalSubTopics} sub-topics total`,
+      icon: BookOpen,
+      color: 'text-emerald-600',
+      bg: 'bg-emerald-50',
+      border: 'border-emerald-100',
+    },
+    {
+      title: 'Quiz Questions',
+      value: stats.totalQuizQuestions,
+      sub: `${stats.videoCoveragePct}% video coverage`,
+      icon: FileQuestion,
+      color: 'text-orange-600',
+      bg: 'bg-orange-50',
+      border: 'border-orange-100',
+    },
   ];
 
   return (
     <AdminLayout>
-      <motion.div 
+      <motion.div
         variants={containerVariants}
         initial="hidden"
         animate="show"
-        className="w-full max-w-[1600px] mx-auto space-y-6"
+        className="w-full max-w-[1600px] mx-auto space-y-6 p-4 sm:p-6 lg:p-8"
       >
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+        {/* Header */}
+        <motion.div variants={itemVariants} className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 className="text-2xl font-extrabold text-slate-900">Platform Overview</h1>
-            <p className="text-sm font-medium text-slate-500 mt-1">Monitor platform metrics and recent activity.</p>
+            <p className="text-sm font-medium text-slate-500 mt-1">Live snapshot of students, curriculum, and content.</p>
           </div>
-          <div className="flex gap-2">
-            <button className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-sm">
-              Export Report
-            </button>
-          </div>
-        </div>
+        </motion.div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {stats.map((stat, index) => (
-            <motion.div key={index} variants={itemVariants} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-              <div className="flex justify-between items-start mb-4">
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${stat.bgColor}`}>
-                  <stat.icon className={`w-6 h-6 ${stat.color}`} />
+        {/* Stat Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {statCards.map((card, i) => (
+            <motion.div key={i} variants={itemVariants} className={`bg-white p-5 rounded-2xl border ${card.border} shadow-sm`}>
+              <div className="flex items-start justify-between mb-4">
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${card.bg}`}>
+                  <card.icon className={`w-5 h-5 ${card.color}`} />
                 </div>
-                <span className="text-xs font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-full">
-                  {stat.change}
-                </span>
               </div>
-              <h3 className="text-slate-500 font-bold text-sm mb-1">{stat.title}</h3>
-              <p className="text-3xl font-extrabold text-slate-900">{stat.value}</p>
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">{card.title}</p>
+              <p className="text-3xl font-extrabold text-slate-900 mb-1">{card.value}</p>
+              <p className="text-xs font-medium text-slate-400">{card.sub}</p>
             </motion.div>
           ))}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Recent Signups */}
-          <motion.div variants={itemVariants} className="lg:col-span-2 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-              <h2 className="text-lg font-bold text-slate-900">Recent Student Signups</h2>
-              <button className="text-sm font-bold text-blue-600 hover:text-blue-700">View All</button>
+        {/* Middle: Enrollment + Curriculum */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Enrollment Breakdown */}
+          <motion.div variants={itemVariants} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <GraduationCap className="w-5 h-5 text-blue-600" />
+                <h2 className="text-base font-bold text-slate-900">Enrollment by Section</h2>
+              </div>
+              <button onClick={() => navigate('/admin/students')} className="text-xs font-bold text-blue-600 hover:text-blue-700">
+                Manage →
+              </button>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50/50 text-xs uppercase tracking-wider text-slate-500 font-bold border-b border-slate-100">
-                    <th className="p-4 pl-6">Student Name</th>
-                    <th className="p-4">Grade</th>
-                    <th className="p-4">Join Date</th>
-                    <th className="p-4">Status</th>
-                    <th className="p-4 text-right pr-6">Actions</th>
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                  <th className="py-3 px-5">Standard</th>
+                  <th className="py-3 px-5">Section</th>
+                  <th className="py-3 px-5 text-center">Students</th>
+                  <th className="py-3 px-5 text-center">Topics</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {enrollmentRows.map((row, i) => (
+                  <tr key={i} className="hover:bg-slate-50 transition-colors">
+                    <td className="py-3 px-5">
+                      <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-md text-xs font-bold">{row.standard}</span>
+                    </td>
+                    <td className="py-3 px-5 text-sm font-semibold text-slate-700">{row.section}</td>
+                    <td className="py-3 px-5 text-center">
+                      <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-50 text-blue-700 text-sm font-extrabold">{row.students}</span>
+                    </td>
+                    <td className="py-3 px-5 text-center">
+                      {row.topics > 0 ? (
+                        <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-md text-xs font-bold">{row.topics}</span>
+                      ) : (
+                        <span className="text-xs text-slate-400">—</span>
+                      )}
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="text-sm font-medium text-slate-700 divide-y divide-slate-100">
-                  {recentStudents.map((student) => (
-                    <tr key={student.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="p-4 pl-6 font-bold text-slate-900">{student.name}</td>
-                      <td className="p-4">{student.grade}</td>
-                      <td className="p-4 text-slate-500">{student.joinDate}</td>
-                      <td className="p-4">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                          student.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
-                        }`}>
-                          {student.status}
-                        </span>
-                      </td>
-                      <td className="p-4 pr-6 text-right">
-                        <button className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
-                          <MoreVertical className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-slate-50 border-t border-slate-200">
+                  <td colSpan={2} className="py-3 px-5 text-xs font-extrabold text-slate-600 uppercase tracking-wider">Total</td>
+                  <td className="py-3 px-5 text-center text-sm font-extrabold text-slate-900">{stats.totalStudents}</td>
+                  <td className="py-3 px-5 text-center text-sm font-extrabold text-slate-900">{stats.totalTopics}</td>
+                </tr>
+              </tfoot>
+            </table>
           </motion.div>
 
-          {/* Quick Actions */}
-          <motion.div variants={itemVariants} className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
-            <h2 className="text-lg font-bold text-slate-900 mb-6">Quick Actions</h2>
-            <div className="space-y-3">
-              <button className="w-full flex items-center gap-3 p-4 rounded-2xl border border-slate-100 hover:border-blue-200 hover:bg-blue-50 transition-colors text-left group">
-                <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                  <BookOpen className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-900 text-sm">Add New Course</h4>
-                  <p className="text-xs text-slate-500 font-medium">Create a new curriculum</p>
-                </div>
-              </button>
-              
-              <button className="w-full flex items-center gap-3 p-4 rounded-2xl border border-slate-100 hover:border-purple-200 hover:bg-purple-50 transition-colors text-left group">
-                <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center group-hover:bg-purple-600 group-hover:text-white transition-colors">
-                  <Users className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-900 text-sm">Invite Students</h4>
-                  <p className="text-xs text-slate-500 font-medium">Send bulk invitations</p>
-                </div>
+          {/* Curriculum Topic Breakdown */}
+          <motion.div variants={itemVariants} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ClipboardList className="w-5 h-5 text-emerald-600" />
+                <h2 className="text-base font-bold text-slate-900">Curriculum Topics</h2>
+              </div>
+              <button onClick={() => navigate('/admin/curriculum')} className="text-xs font-bold text-emerald-600 hover:text-emerald-700">
+                Manage →
               </button>
             </div>
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                  <th className="py-3 px-5">Topic</th>
+                  <th className="py-3 px-5 text-center">Sub-topics</th>
+                  <th className="py-3 px-5 text-center">Questions</th>
+                  <th className="py-3 px-5 text-center">Video</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {curriculumRows.map((row, i) => (
+                  <tr key={i} className="hover:bg-slate-50 transition-colors">
+                    <td className="py-3 px-5">
+                      <p className="text-sm font-bold text-slate-900">{row.topic}</p>
+                      <p className="text-xs text-slate-400 font-medium">{row.standard}</p>
+                    </td>
+                    <td className="py-3 px-5 text-center">
+                      <span className="text-sm font-bold text-slate-700">{row.subtopics}</span>
+                    </td>
+                    <td className="py-3 px-5 text-center">
+                      <span className={`px-2 py-0.5 rounded-md text-xs font-bold ${row.questions > 0 ? 'bg-orange-50 text-orange-700' : 'bg-slate-100 text-slate-500'}`}>
+                        {row.questions > 0 ? row.questions : '—'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-5 text-center">
+                      {row.hasVideo ? (
+                        <CheckCircle2 className="w-4 h-4 text-green-500 inline" />
+                      ) : (
+                        <Video className="w-4 h-4 text-slate-300 inline" />
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {curriculumRows.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="py-10 text-center text-slate-400 text-sm">No topics in curriculum yet.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </motion.div>
         </div>
+
+        {/* Recent Students */}
+        <motion.div variants={itemVariants} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-purple-600" />
+              <h2 className="text-base font-bold text-slate-900">Recently Added Students</h2>
+            </div>
+            <button onClick={() => navigate('/admin/students')} className="text-xs font-bold text-blue-600 hover:text-blue-700">
+              View All →
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                  <th className="py-3 px-5">Student</th>
+                  <th className="py-3 px-5">Standard</th>
+                  <th className="py-3 px-5">Section</th>
+                  <th className="py-3 px-5">Email</th>
+                  <th className="py-3 px-5 text-right">Joined</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {recentStudents.map((s) => (
+                  <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="py-3 px-5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-extrabold shrink-0">
+                          {s.studentName.charAt(0)}
+                        </div>
+                        <span className="text-sm font-bold text-slate-900">{s.studentName}</span>
+                      </div>
+                    </td>
+                    <td className="py-3 px-5">
+                      <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-md text-xs font-bold">{s.standardName}</span>
+                    </td>
+                    <td className="py-3 px-5 text-sm text-slate-600 font-medium">{s.sectionName}</td>
+                    <td className="py-3 px-5 text-sm text-slate-500">{s.studentEmail}</td>
+                    <td className="py-3 px-5 text-right text-xs text-slate-400 font-semibold">{s.joinedAt}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </motion.div>
       </motion.div>
     </AdminLayout>
   );

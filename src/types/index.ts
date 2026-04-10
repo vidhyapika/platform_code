@@ -122,6 +122,7 @@ export interface Topic {
   subTopics: SubTopic[]; 
   prerequisites?: Prerequisite[];
   preEvaluationQuiz?: Question[];
+  postEvaluationQuiz?: Question[];
 }
 
 export interface StudentSubTopicProgress {
@@ -160,6 +161,13 @@ export interface StudentTopicProgress {
     pastAnswers?: Record<string, string>;
   };
   sectionEndScore?: {
+    score: number;
+    total: number;
+    date: string;
+    pastAnswers?: Record<string, string>;
+  };
+  postEvaluationQuiz?: Question[];
+  postEvaluationScore?: {
     score: number;
     total: number;
     date: string;
