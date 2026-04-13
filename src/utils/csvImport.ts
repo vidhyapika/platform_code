@@ -410,6 +410,268 @@ export function parseCSV(csvText: string, existingStandards: Standard[] = []): P
   return { standards: result, errors, warnings, rowCount: rows.length - 1 };
 }
 
+// ─── Level-specific parsers ───────────────────────────────────────────────────
+
+/** Context required when importing at a scope below "full". */
+export interface LevelContext {
+  standardId?: string;
+  standardName?: string;
+  classId?: string;
+  className?: string;
+  topicId?: string;
+  topicTitle?: string;
+  subtopicId?: string;
+  subtopicTitle?: string;
+}
+
+export type LevelParseTarget =
+  | 'topics'        // columns: topic_title, topic_sequence
+  | 'subtopics'     // columns: subtopic_title, subtopic_video
+  | 'prerequisites' // columns: prereq_title, prereq_category
+  | 'questions';    // columns: question_text, question_type, option_a-d, correct_answer, explanation, difficulty
+
+export interface LevelParseResult {
+  items: any[];
+  errors: ParseError[];
+  warnings: string[];
+  rowCount: number;
+  /** Parsed rows in raw form — used for the row-selection preview table. */
+  rows: Record<string, string>[];
+}
+
+/** Parse a TSV or CSV pasted from Excel for the given target level. */
+export function parseLevelData(
+  rawText: string,
+  target: LevelParseTarget,
+): LevelParseResult {
+  const errors: ParseError[] = [];
+  const warnings: string[] = [];
+
+  // Detect separator: if row contains tabs, treat as TSV; else CSV
+  const firstLine = rawText.split('\n')[0] ?? '';
+  const sep = firstLine.includes('\t') ? '\t' : ',';
+
+  // Tokenise using separator
+  const tokenise = (raw: string): string[][] => {
+    const lines: string[][] = [];
+    const rows = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    for (const line of rows) {
+      if (line.trim() === '') continue;
+      if (sep === '\t') {
+        lines.push(line.split('\t').map(c => c.trim()));
+      } else {
+        // reuse full CSV tokeniser for comma-sep
+        const cells: string[] = [];
+        let inQuote = false, cur = '';
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (ch === '"') {
+            if (inQuote && line[i + 1] === '"') { cur += '"'; i++; }
+            else inQuote = !inQuote;
+          } else if (ch === ',' && !inQuote) { cells.push(cur); cur = ''; }
+          else cur += ch;
+        }
+        cells.push(cur);
+        lines.push(cells.map(c => c.trim()));
+      }
+    }
+    return lines;
+  };
+
+  const allRows = tokenise(rawText);
+  if (allRows.length === 0) {
+    errors.push({ row: 0, column: '', message: 'No data found.' });
+    return { items: [], errors, warnings, rowCount: 0, rows: [] };
+  }
+
+  // Auto-detect headers: if first cell of first row resembles a column name, treat as header
+  const KNOWN = new Set<string>([
+    'topic_title', 'topic_sequence', 'title', 'sequence',
+    'subtopic_title', 'subtopic_video', 'video', 'video_url',
+    'prereq_title', 'prereq_category', 'category',
+    'question_text', 'question', 'text',
+    'question_type', 'type',
+    'option_a', 'option_b', 'option_c', 'option_d',
+    'a', 'b', 'c', 'd',
+    'correct_answer', 'answer', 'correct',
+    'explanation',
+    'difficulty',
+  ]);
+
+  const firstCellLower = allRows[0][0].toLowerCase().replace(/\s+/g, '_');
+  const hasHeaders = KNOWN.has(firstCellLower);
+
+  let headers: string[];
+  let dataRows: string[][];
+  if (hasHeaders) {
+    headers = allRows[0].map(h => normaliseHeader(h));
+    dataRows = allRows.slice(1);
+  } else {
+    // No header row — assign positional defaults per target
+    dataRows = allRows;
+    switch (target) {
+      case 'topics':
+        headers = ['topic_title', 'topic_sequence'];
+        break;
+      case 'subtopics':
+        headers = ['subtopic_title', 'subtopic_video'];
+        break;
+      case 'prerequisites':
+        headers = ['prereq_title', 'prereq_category'];
+        break;
+      case 'questions':
+        headers = ['question_text', 'question_type', 'option_a', 'option_b', 'option_c', 'option_d', 'correct_answer', 'explanation', 'difficulty'];
+        break;
+    }
+  }
+
+  // Alias map: allow friendly column names
+  const ALIAS: Record<string, string> = {
+    title: 'topic_title', sequence: 'topic_sequence',
+    video: 'subtopic_video', video_url: 'subtopic_video',
+    question: 'question_text', text: 'question_text',
+    type: 'question_type',
+    a: 'option_a', b: 'option_b', c: 'option_c', d: 'option_d',
+    answer: 'correct_answer', correct: 'correct_answer',
+  };
+  headers = headers.map(h => ALIAS[h] ?? h);
+
+  const getCell = (cells: string[], name: string): string => {
+    const i = headers.indexOf(name);
+    return i >= 0 ? (cells[i] ?? '').trim() : '';
+  };
+
+  const parsedRows: Record<string, string>[] = [];
+  const items: any[] = [];
+
+  for (let ri = 0; ri < dataRows.length; ri++) {
+    const cells = dataRows[ri];
+    const rowNum = (hasHeaders ? ri + 2 : ri + 1);
+    const rowRecord: Record<string, string> = {};
+    headers.forEach((h, i) => { rowRecord[h] = (cells[i] ?? '').trim(); });
+    parsedRows.push(rowRecord);
+
+    if (target === 'topics') {
+      const title = getCell(cells, 'topic_title');
+      if (!title) { errors.push({ row: rowNum, column: 'topic_title', message: 'topic_title is required.' }); continue; }
+      const seq = parseInt(getCell(cells, 'topic_sequence')) || (ri + 1);
+      items.push({ title, sequence: seq });
+
+    } else if (target === 'subtopics') {
+      const title = getCell(cells, 'subtopic_title');
+      if (!title) { errors.push({ row: rowNum, column: 'subtopic_title', message: 'subtopic_title is required.' }); continue; }
+      const video = getCell(cells, 'subtopic_video');
+      items.push({ title, videoUrl: video || undefined });
+
+    } else if (target === 'prerequisites') {
+      const title = getCell(cells, 'prereq_title');
+      if (!title) { errors.push({ row: rowNum, column: 'prereq_title', message: 'prereq_title is required.' }); continue; }
+      const cat = getCell(cells, 'prereq_category');
+      const category = (['Major', 'Intermediate', 'Minor'].includes(cat) ? cat : 'Minor') as 'Major' | 'Intermediate' | 'Minor';
+      items.push({ title, category });
+
+    } else if (target === 'questions') {
+      const text = getCell(cells, 'question_text');
+      if (!text) { errors.push({ row: rowNum, column: 'question_text', message: 'question_text is required.' }); continue; }
+      const rawType = getCell(cells, 'question_type');
+      const qType = (['mcq', 'boolean', 'text'].includes(rawType) ? rawType : 'mcq') as 'mcq' | 'boolean' | 'text';
+      const rawDiff = getCell(cells, 'difficulty');
+      const difficulty = (['Easy', 'Medium', 'Hard'].includes(rawDiff) ? rawDiff : 'Medium') as 'Easy' | 'Medium' | 'Hard';
+      const explanation = getCell(cells, 'explanation');
+      const correct = getCell(cells, 'correct_answer');
+
+      let options: string[] | undefined;
+      if (qType === 'mcq') {
+        options = [
+          getCell(cells, 'option_a'),
+          getCell(cells, 'option_b'),
+          getCell(cells, 'option_c'),
+          getCell(cells, 'option_d'),
+        ].filter(Boolean);
+        if (options.length < 2) { errors.push({ row: rowNum, column: 'option_a', message: 'MCQ needs at least option_a and option_b.' }); continue; }
+        if (!correct) { errors.push({ row: rowNum, column: 'correct_answer', message: 'correct_answer is required for MCQ.' }); continue; }
+        if (!options.includes(correct)) { errors.push({ row: rowNum, column: 'correct_answer', message: `correct_answer "${correct}" must match one of the options.` }); continue; }
+      } else if (qType === 'boolean') {
+        options = ['True', 'False'];
+        if (!['True', 'False'].includes(correct)) { errors.push({ row: rowNum, column: 'correct_answer', message: 'Boolean questions require correct_answer "True" or "False".' }); continue; }
+      }
+
+      items.push({ id: uid(), text, type: qType, options, correctAnswer: correct, explanation, difficulty });
+    }
+  }
+
+  return { items, errors, warnings, rowCount: dataRows.length, rows: parsedRows };
+}
+
+/** Generate a minimal template CSV/TSV for the given target level. */
+export function generateLevelTemplateCSV(target: LevelParseTarget): string {
+  switch (target) {
+    case 'topics':
+      return [
+        'topic_title,topic_sequence',
+        'Algebraic Expressions,1',
+        'Linear Equations,2',
+        'Quadratic Equations,3',
+      ].join('\n');
+    case 'subtopics':
+      return [
+        'subtopic_title,subtopic_video',
+        'Introduction to Polynomials,https://youtube.com/watch?v=example1',
+        'Adding Polynomials,https://youtube.com/watch?v=example2',
+        'Multiplying Polynomials,',
+      ].join('\n');
+    case 'prerequisites':
+      return [
+        'prereq_title,prereq_category',
+        'Basic Arithmetic,Major',
+        'Understanding Variables,Intermediate',
+        'Number Systems,Minor',
+      ].join('\n');
+    case 'questions':
+      return [
+        'question_text,question_type,option_a,option_b,option_c,option_d,correct_answer,explanation,difficulty',
+        'What is 5 + 3 × 2?,mcq,16,11,10,13,11,"BODMAS: multiply first → 3×2=6 → 5+6=11",Easy',
+        'Is 4x a monomial?,boolean,,,,,True,A monomial has exactly one term.,Easy',
+        'Simplify 2x + 3x,mcq,5x,6x,x,5x²,5x,Combine like terms: coefficients 2+3=5.,Medium',
+      ].join('\n');
+  }
+}
+
+/** Column documentation per target level — shown in the panel's guide tab. */
+export interface LevelColumnDoc {
+  name: string;
+  required: boolean;
+  description: string;
+  example: string;
+  allowedValues?: string;
+}
+
+export const LEVEL_COLUMN_DOCS: Record<LevelParseTarget, LevelColumnDoc[]> = {
+  topics: [
+    { name: 'topic_title', required: true,  description: 'Name of the topic.', example: 'Algebraic Expressions' },
+    { name: 'topic_sequence', required: false, description: 'Display order (integer). Defaults to row order.', example: '1' },
+  ],
+  subtopics: [
+    { name: 'subtopic_title', required: true,  description: 'Name of the sub-topic.', example: 'Introduction to Polynomials' },
+    { name: 'subtopic_video', required: false, description: 'Full YouTube URL for the lesson video.', example: 'https://youtube.com/watch?v=...' },
+  ],
+  prerequisites: [
+    { name: 'prereq_title',    required: true,  description: 'Name of the prerequisite topic.', example: 'Basic Arithmetic' },
+    { name: 'prereq_category', required: false, description: 'Importance level.', allowedValues: 'Major | Intermediate | Minor', example: 'Major' },
+  ],
+  questions: [
+    { name: 'question_text',   required: true,  description: 'The question body.', example: 'What is 2 + 2?' },
+    { name: 'question_type',   required: false, description: 'Type of question.', allowedValues: 'mcq | boolean | text', example: 'mcq' },
+    { name: 'option_a',        required: false, description: 'First MCQ choice.', example: '4' },
+    { name: 'option_b',        required: false, description: 'Second MCQ choice.', example: '3' },
+    { name: 'option_c',        required: false, description: 'Third MCQ choice (optional).', example: '5' },
+    { name: 'option_d',        required: false, description: 'Fourth MCQ choice (optional).', example: '6' },
+    { name: 'correct_answer',  required: false, description: 'Exact text of the correct answer.', example: '4' },
+    { name: 'explanation',     required: false, description: 'Explanation shown after answering.', example: 'Because 2+2 equals 4.' },
+    { name: 'difficulty',      required: false, description: 'Difficulty level.', allowedValues: 'Easy | Medium | Hard', example: 'Easy' },
+  ],
+};
+
 // ─── Template generator ───────────────────────────────────────────────────────
 
 export function generateTemplateCSV(level: ImportLevel = 'full'): string {

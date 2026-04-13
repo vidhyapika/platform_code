@@ -6,7 +6,8 @@ import {
 import { 
   Course, DashboardCourse, Assignment, DashboardAssignment, 
   ScheduleEvent, DashboardSchedule, Activity, QuickLink, Badge,
-  StudentCurriculumProgress, StudentTopicProgress, StudentSubTopicProgress
+  StudentCurriculumProgress, StudentTopicProgress, StudentSubTopicProgress,
+  AISession
 } from '../types';
 import { INITIAL_CURRICULUM_DATA } from './adminMockData';
 
@@ -16,6 +17,41 @@ function toEmbed(url?: string): string | undefined {
   const m = url.match(/(?:youtu\.be\/|[?&]v=|embed\/)([A-Za-z0-9_-]{11})/);
   return m ? `https://www.youtube.com/embed/${m[1]}` : undefined;
 }
+
+// ── Mock AI Sessions ───────────────────────────────────────────────────────
+const MOCK_AI_SESSIONS_TOPIC1: AISession[] = [
+  {
+    id: 'ai-s1',
+    topicId: 'top-1',
+    kind: 'prerequisite',
+    date: '2026-03-08',
+    resolved: true,
+    messages: [
+      { id: 'm1', role: 'tutor', content: "Let's review Basic Arithmetic Operations. You missed questions about order of operations and fractions. Here's what you need to know...", timestamp: '2026-03-08T09:00:00' },
+      { id: 'm2', role: 'student', content: 'I think I understand PEMDAS now', timestamp: '2026-03-08T09:05:00' },
+      { id: 'm3', role: 'tutor', content: 'Great! Remember: Parentheses → Exponents → Multiplication/Division (left to right) → Addition/Subtraction. Now try the new quiz!', timestamp: '2026-03-08T09:06:00' },
+    ],
+    generatedQuiz: [
+      { id: 'ai-q1', text: 'Evaluate: 12 ÷ 4 + 3 × 2', type: 'mcq', options: ['9', '3', '12', '6'], correctAnswer: '9', explanation: '12÷4=3, 3×2=6, 3+6=9.', difficulty: 'Easy' },
+    ],
+  },
+];
+
+const MOCK_AI_SESSIONS_TOPIC2: AISession[] = [
+  {
+    id: 'ai-s2',
+    topicId: 'top-2',
+    subtopicId: 'sub-2',
+    kind: 'subtopic',
+    date: '2026-03-22',
+    resolved: false,
+    messages: [
+      { id: 'm4', role: 'tutor', content: "You struggled with isolating the variable when the equation has multiplication. Let me explain the division property of equality...", timestamp: '2026-03-22T14:00:00' },
+      { id: 'm5', role: 'student', content: 'So I divide both sides by the coefficient?', timestamp: '2026-03-22T14:03:00' },
+      { id: 'm6', role: 'tutor', content: 'Exactly! Always do the same operation on both sides to keep the equation balanced. Ready for a targeted practice quiz?', timestamp: '2026-03-22T14:04:00' },
+    ],
+  },
+];
 
 // ── Build StudentCurriculumProgress from the admin curriculum data ─────────
 function buildStudentCurriculum(): StudentCurriculumProgress {
@@ -27,15 +63,20 @@ function buildStudentCurriculum(): StudentCurriculumProgress {
     .slice()
     .sort((a, b) => a.sequence - b.sequence)
     .map((topic, idx): StudentTopicProgress => {
-      // Mock progress: first topic completed, second in-progress, rest not-started
+      // Mock progress: varied stages so all student states are visible in the UI
+      // idx 0 = completed · idx 1 = in-progress (past prereqs) · idx 2 = in-progress (at prereqs)
+      // idx 3 = in-progress (no prereqs, watching video) · idx 4-5 = not-started
       const isCompleted  = idx === 0;
-      const isInProgress = idx === 1;
-      const progress     = isCompleted ? 100 : isInProgress ? 50 : 0;
+      const isInProgress = idx >= 1 && idx <= 3;
+      const progress     = isCompleted ? 100 : idx === 1 ? 65 : idx === 2 ? 15 : idx === 3 ? 35 : 0;
       const status       = isCompleted ? 'completed' : isInProgress ? 'in-progress' : 'not-started';
 
       const subTopics: StudentSubTopicProgress[] = topic.subTopics.map((sub, sIdx): StudentSubTopicProgress => {
-        const subCompleted  = isCompleted;
-        const subInProgress = isInProgress && sIdx === 0;
+        // idx 1: first sub done, second in-progress
+        // idx 2: no subs done yet (stuck at prereqs)
+        // idx 3: first sub in-progress (no prereqs, watching videos)
+        const subCompleted  = isCompleted || (idx === 1 && sIdx === 0);
+        const subInProgress = (idx === 1 && sIdx === 1) || (idx === 3 && sIdx === 0);
         const quizTotal = sub.quizzes?.length ?? 0;
         return {
           id:           sub.id,
@@ -75,7 +116,8 @@ function buildStudentCurriculum(): StudentCurriculumProgress {
               { score: p.questions?.length ?? 3,                    total: p.questions?.length ?? 3, date: '2026-03-10' },
             ],
           }))
-        : isInProgress
+        // idx 2 has NOT passed any prereqs yet → empty array so CoursePlayer starts at prereq phase
+        : isInProgress && idx !== 2
           ? (topic.prerequisites ?? []).map((p, pi) => ({
               id: p.id, title: p.title,
               score: Math.max(1, (p.questions?.length ?? 3) - 1),
@@ -121,9 +163,23 @@ function buildStudentCurriculum(): StudentCurriculumProgress {
               ],
             }
           : undefined,
-        subtopicsCompleted: isCompleted ? topic.subTopics.length : isInProgress ? 1 : 0,
+        finalTestQuiz:  topic.finalTestQuiz,
+        finalTestScore: isCompleted && (topic.finalTestQuiz?.length ?? 0) > 0
+          ? {
+              score: topic.finalTestQuiz!.length,
+              total: topic.finalTestQuiz!.length,
+              date:  '2026-03-17',
+              attempts: [
+                { score: Math.max(1, topic.finalTestQuiz!.length - 1), total: topic.finalTestQuiz!.length, date: '2026-03-16' },
+                { score: topic.finalTestQuiz!.length,                  total: topic.finalTestQuiz!.length, date: '2026-03-17' },
+              ],
+            }
+          : undefined,
+        subtopicsCompleted: isCompleted ? topic.subTopics.length : idx === 1 ? 1 : 0,
         totalSubtopics:     topic.subTopics.length,
         subTopics,
+        aiSessions:    idx === 0 ? MOCK_AI_SESSIONS_TOPIC1 : idx === 1 ? MOCK_AI_SESSIONS_TOPIC2 : [],
+        aiSessionCount: idx === 0 ? 1 : idx === 1 ? 1 : 0,
       };
     });
 
@@ -132,7 +188,7 @@ function buildStudentCurriculum(): StudentCurriculumProgress {
     ? Math.round(topics.reduce((acc, t) => acc + t.progress, 0) / topics.length)
     : 0;
 
-  return { standard: std.name, className: cls.name, overallProgress, completedTopics, totalTopics: topics.length, topics };
+  return { standard: std.name, className: cls.name, overallProgress, completedTopics, totalTopics: topics.length, topics, aiSessionCount: 2, lastAISession: '2026-03-22' };
 }
 
 export const MOCK_STUDENT_CURRICULUM: StudentCurriculumProgress = buildStudentCurriculum();

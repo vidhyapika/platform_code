@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { Modal } from '../../components/ui/Modal';
 import { CurriculumImportModal } from '../../components/CurriculumImportModal';
+import { LevelImportPanel } from '../../components/LevelImportPanel';
+import { ThresholdSlider } from '../../components/ui/ThresholdSlider';
 import { 
   Plus, Edit2, Trash2, ChevronRight, 
   BookOpen, Layers, ListTree, AlertTriangle, Calculator,
   Video, HelpCircle, FileText, ArrowLeft, PlayCircle, CheckCircle2,
-  Network, ClipboardCheck, X, BarChart2, Upload
+  Network, ClipboardCheck, X, BarChart2, Upload, Trophy, Sparkles
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
@@ -96,7 +98,7 @@ export function AdminCurriculum() {
       });
     } else if (type === 'add-topic') {
       setFormData({ sequence: (currentClass?.curriculum.length || 0) + 1 });
-    } else if (type === 'add-quiz' || type === 'add-preeval-quiz') {
+    } else if (type === 'add-quiz' || type === 'add-preeval-quiz' || type === 'add-finaltest-quiz') {
       setFormData({ type: 'mcq', optionsArray: ['', '', '', ''] });
     } else {
       setFormData({});
@@ -191,6 +193,35 @@ export function AdminCurriculum() {
           title: formData.title,
           category: formData.category || 'Minor'
         });
+      }
+    } else if (type === 'add-finaltest-quiz') {
+      const std = newData.find(s => s.id === selection.standardId);
+      const cls = std?.classes.find(c => c.id === selection.classId);
+      const topic = cls?.curriculum.find(t => t.id === selection.topicId);
+      if (topic) {
+        if (!topic.finalTestQuiz) topic.finalTestQuiz = [];
+        topic.finalTestQuiz.push({
+          id: Date.now().toString(),
+          text: formData.text,
+          type: formData.type || 'mcq',
+          options: formData.type === 'mcq' ? (formData.optionsArray || []).filter((o: string) => o.trim() !== '') : formData.type === 'boolean' ? ['True', 'False'] : [],
+          correctAnswer: formData.correctAnswer,
+          explanation: formData.explanation || '',
+          difficulty: formData.difficulty || 'Medium'
+        });
+      }
+    } else if (type === 'edit-finaltest-quiz') {
+      const std = newData.find(s => s.id === selection.standardId);
+      const cls = std?.classes.find(c => c.id === selection.classId);
+      const topic = cls?.curriculum.find(t => t.id === selection.topicId);
+      const quiz = topic?.finalTestQuiz?.find(q => q.id === payload.id);
+      if (quiz) {
+        quiz.text = formData.text;
+        quiz.type = formData.type;
+        quiz.options = formData.type === 'mcq' ? (formData.optionsArray || []).filter((o: string) => o.trim() !== '') : formData.type === 'boolean' ? ['True', 'False'] : [];
+        quiz.correctAnswer = formData.correctAnswer;
+        quiz.explanation = formData.explanation;
+        quiz.difficulty = formData.difficulty;
       }
     } else if (type === 'edit-prerequisite') {
       const std = newData.find(s => s.id === selection.standardId);
@@ -306,6 +337,12 @@ export function AdminCurriculum() {
       const cls = std?.classes.find(c => c.id === selection.classId);
       const topic = cls?.curriculum.find(t => t.id === selection.topicId);
       if (topic && topic.preEvaluationQuiz) topic.preEvaluationQuiz = topic.preEvaluationQuiz.filter(q => q.id !== id);
+      setData(newData);
+    } else if (itemType === 'finaltest-quiz') {
+      const std = newData.find(s => s.id === selection.standardId);
+      const cls = std?.classes.find(c => c.id === selection.classId);
+      const topic = cls?.curriculum.find(t => t.id === selection.topicId);
+      if (topic && topic.finalTestQuiz) topic.finalTestQuiz = topic.finalTestQuiz.filter(q => q.id !== id);
       setData(newData);
     } else if (itemType === 'posteval-quiz') {
       const std = newData.find(s => s.id === selection.standardId);
@@ -443,6 +480,91 @@ export function AdminCurriculum() {
     </div>
   );
 
+  // ── Level import handlers ────────────────────────────────────────────────
+  const handleImportTopics = (items: any[]) => {
+    const newData = [...data];
+    const std = newData.find(s => s.id === selection.standardId);
+    const cls = std?.classes.find(c => c.id === selection.classId);
+    if (!cls) return;
+    const existing = new Set(cls.curriculum.map(t => t.title.toLowerCase()));
+    let nextSeq = (cls.curriculum.reduce((m, t) => Math.max(m, t.sequence), 0)) + 1;
+    for (const item of items) {
+      if (!existing.has(item.title.toLowerCase())) {
+        cls.curriculum.push({ id: Date.now().toString() + Math.random(), title: item.title, sequence: item.sequence || nextSeq++, subTopics: [] });
+        existing.add(item.title.toLowerCase());
+      }
+    }
+    cls.curriculum.sort((a, b) => a.sequence - b.sequence);
+    setData(newData);
+  };
+
+  const handleImportSubtopics = (items: any[]) => {
+    const newData = [...data];
+    const std = newData.find(s => s.id === selection.standardId);
+    const cls = std?.classes.find(c => c.id === selection.classId);
+    const topic = cls?.curriculum.find(t => t.id === selection.topicId);
+    if (!topic) return;
+    const existing = new Set(topic.subTopics.map(s => s.title.toLowerCase()));
+    for (const item of items) {
+      if (!existing.has(item.title.toLowerCase())) {
+        topic.subTopics.push({ id: Date.now().toString() + Math.random(), title: item.title, videoUrl: item.videoUrl || '', quizzes: [] });
+        existing.add(item.title.toLowerCase());
+      }
+    }
+    setData(newData);
+  };
+
+  const handleImportPrereqs = (items: any[]) => {
+    const newData = [...data];
+    const std = newData.find(s => s.id === selection.standardId);
+    const cls = std?.classes.find(c => c.id === selection.classId);
+    const topic = cls?.curriculum.find(t => t.id === selection.topicId);
+    if (!topic) return;
+    if (!topic.prerequisites) topic.prerequisites = [];
+    const existing = new Set(topic.prerequisites.map(p => p.title.toLowerCase()));
+    for (const item of items) {
+      if (!existing.has(item.title.toLowerCase())) {
+        topic.prerequisites.push({ id: Date.now().toString() + Math.random(), title: item.title, category: item.category || 'Minor' });
+        existing.add(item.title.toLowerCase());
+      }
+    }
+    setData(newData);
+  };
+
+  const handleImportPreEvalQuestions = (items: any[]) => {
+    const newData = [...data];
+    const std = newData.find(s => s.id === selection.standardId);
+    const cls = std?.classes.find(c => c.id === selection.classId);
+    const topic = cls?.curriculum.find(t => t.id === selection.topicId);
+    if (!topic) return;
+    if (!topic.preEvaluationQuiz) topic.preEvaluationQuiz = [];
+    topic.preEvaluationQuiz.push(...items);
+    setData(newData);
+  };
+
+  const handleImportPostEvalQuestions = (items: any[]) => {
+    const newData = [...data];
+    const std = newData.find(s => s.id === selection.standardId);
+    const cls = std?.classes.find(c => c.id === selection.classId);
+    const topic = cls?.curriculum.find(t => t.id === selection.topicId);
+    if (!topic) return;
+    if (!topic.postEvaluationQuiz) topic.postEvaluationQuiz = [];
+    topic.postEvaluationQuiz.push(...items);
+    setData(newData);
+  };
+
+  const handleImportSubtopicQuestions = (items: any[]) => {
+    const newData = [...data];
+    const std = newData.find(s => s.id === selection.standardId);
+    const cls = std?.classes.find(c => c.id === selection.classId);
+    const topic = cls?.curriculum.find(t => t.id === selection.topicId);
+    const sub = topic?.subTopics.find(s => s.id === selection.subtopicId);
+    if (!sub) return;
+    if (!sub.quizzes) sub.quizzes = [];
+    sub.quizzes.push(...items);
+    setData(newData);
+  };
+
   const renderTopics = () => (
     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex justify-between items-center mb-4">
@@ -485,6 +607,14 @@ export function AdminCurriculum() {
           )}
         </div>
       </div>
+
+      {/* Bulk import topics */}
+      <LevelImportPanel
+        target="topics"
+        accent="blue"
+        contextLabel={currentClass?.name}
+        onImport={handleImportTopics}
+      />
     </div>
   );
 
@@ -544,6 +674,78 @@ export function AdminCurriculum() {
     </div>
   );
 
+  const renderFinalTest = () => {
+    const hasQuestions = (currentTopic?.finalTestQuiz?.length ?? 0) > 0;
+    const showAnalytics = activeTab === ('finaltest-analytics' as any);
+    return (
+      <div className="space-y-4">
+        <div className="flex justify-between items-center mb-2">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-8 h-8 bg-amber-100 rounded-xl flex items-center justify-center">
+                <Trophy className="w-4 h-4 text-amber-600" />
+              </div>
+              <h2 className="text-xl font-extrabold text-slate-900">Final Topic Test</h2>
+            </div>
+            <p className="text-sm text-slate-500">Comprehensive test after students complete all subtopics. 60% required to pass.</p>
+          </div>
+          <button onClick={() => openModal('add-finaltest-quiz')} className="px-4 py-2 bg-amber-600 text-white rounded-xl text-sm font-bold hover:bg-amber-700 transition-colors shadow-sm flex items-center gap-2">
+            <Plus className="w-4 h-4" /> Add Question
+          </button>
+        </div>
+
+        {/* AI info callout */}
+        <div className="flex items-start gap-3 p-4 bg-indigo-50 border border-indigo-100 rounded-2xl">
+          <Sparkles className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-bold text-indigo-900 mb-0.5">AI-Assisted Feedback</p>
+            <p className="text-xs text-indigo-700">If a student fails this test, the AI will analyze their wrong answers and provide personalized teaching before allowing a retake.</p>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        {hasQuestions && (
+          <div className="flex gap-1 border-b border-slate-200 mb-2">
+            <button
+              onClick={() => setActiveTab('video' as any)}
+              className={`px-4 py-2 font-bold text-sm flex items-center gap-2 border-b-2 transition-colors ${
+                !showAnalytics ? 'border-amber-500 text-amber-600' : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <HelpCircle className="w-4 h-4" /> Questions
+              <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs ml-1">{currentTopic?.finalTestQuiz?.length ?? 0}</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('finaltest-analytics' as any)}
+              className={`px-4 py-2 font-bold text-sm flex items-center gap-2 border-b-2 transition-colors ${
+                showAnalytics ? 'border-amber-500 text-amber-600' : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <BarChart2 className="w-4 h-4" /> Analytics
+            </button>
+          </div>
+        )}
+
+        {showAnalytics ? (
+          renderAnalyticsPanel(currentTopic?.finalTestQuiz ?? [], '#d97706')
+        ) : (!currentTopic?.finalTestQuiz || currentTopic.finalTestQuiz.length === 0) ? (
+          <div className="py-16 text-center border-2 border-dashed border-amber-200 rounded-2xl bg-amber-50">
+            <Trophy className="w-16 h-16 text-amber-300 mx-auto mb-4" />
+            <h3 className="text-xl font-bold text-slate-900 mb-2">No Final Test Questions</h3>
+            <p className="text-slate-500 mb-6 max-w-md mx-auto">Add comprehensive questions to test student mastery of the entire topic.</p>
+            <button onClick={() => openModal('add-finaltest-quiz')} className="px-6 py-3 bg-amber-600 text-white rounded-xl font-bold hover:bg-amber-700 transition-colors shadow-sm">
+              Create First Question
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {currentTopic.finalTestQuiz.map((quiz, index) => renderQuizCard(quiz, index, 'edit-finaltest-quiz', 'finaltest-quiz'))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderPrerequisites = () => (
     <div className="space-y-4">
       <div className="flex justify-between items-center mb-2">
@@ -555,6 +757,14 @@ export function AdminCurriculum() {
           <Plus className="w-4 h-4" /> Add Prerequisite
         </button>
       </div>
+
+      {/* Bulk import prerequisites */}
+      <LevelImportPanel
+        target="prerequisites"
+        accent="purple"
+        contextLabel={currentTopic?.title}
+        onImport={handleImportPrereqs}
+      />
 
       {(!currentTopic?.prerequisites || currentTopic.prerequisites.length === 0) ? (
         <div className="py-16 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-white">
@@ -568,21 +778,37 @@ export function AdminCurriculum() {
       ) : (
         <div className="grid grid-cols-1 gap-3">
           {currentTopic.prerequisites.map(req => (
-            <div key={req.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center justify-between group">
-              <div className="flex items-center gap-4">
-                <span className={`px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider ${
-                  req.category === 'Major' ? 'bg-red-50 text-red-700' :
-                  req.category === 'Intermediate' ? 'bg-amber-50 text-amber-700' :
-                  'bg-green-50 text-green-700'
-                }`}>
-                  {req.category}
-                </span>
-                <span className="font-bold text-slate-900">{req.title}</span>
+            <div key={req.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm group">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <span className={`px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider ${
+                    req.category === 'Major' ? 'bg-red-50 text-red-700' :
+                    req.category === 'Intermediate' ? 'bg-amber-50 text-amber-700' :
+                    'bg-green-50 text-green-700'
+                  }`}>
+                    {req.category}
+                  </span>
+                  <span className="font-bold text-slate-900">{req.title}</span>
+                </div>
+                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => openModal('edit-prerequisite', req)} className="p-2 bg-slate-100 text-slate-600 hover:bg-blue-100 hover:text-blue-700 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
+                  <button onClick={() => openModal('delete-confirm', { itemType: 'prerequisite', id: req.id, name: req.title })} className="p-2 bg-slate-100 text-slate-600 hover:bg-red-100 hover:text-red-700 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
+                </div>
               </div>
-              <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onClick={() => openModal('edit-prerequisite', req)} className="p-2 bg-slate-100 text-slate-600 hover:bg-blue-100 hover:text-blue-700 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
-                <button onClick={() => openModal('delete-confirm', { itemType: 'prerequisite', id: req.id, name: req.title })} className="p-2 bg-slate-100 text-slate-600 hover:bg-red-100 hover:text-red-700 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
-              </div>
+              {/* Threshold slider */}
+              <ThresholdSlider
+                value={req.passingThreshold ?? 60}
+                onChange={(val) => {
+                  const newData = [...data];
+                  const std = newData.find(s => s.id === selection.standardId);
+                  const cls = std?.classes.find(c => c.id === selection.classId);
+                  const topic = cls?.curriculum.find(t => t.id === selection.topicId);
+                  const prereq = topic?.prerequisites?.find(p => p.id === req.id);
+                  if (prereq) prereq.passingThreshold = val;
+                  setData(newData);
+                }}
+                label="Passing threshold"
+              />
             </div>
           ))}
         </div>
@@ -774,6 +1000,16 @@ export function AdminCurriculum() {
           {currentTopic.preEvaluationQuiz.map((quiz, index) => renderQuizCard(quiz, index, 'edit-preeval-quiz', 'preeval-quiz'))}
         </div>
       )}
+
+      {/* Bulk import pre-eval questions */}
+      {!showAnalytics && (
+        <LevelImportPanel
+          target="questions"
+          accent="orange"
+          contextLabel={`Pre-eval — ${currentTopic?.title}`}
+          onImport={handleImportPreEvalQuestions}
+        />
+      )}
     </div>
     );
   };
@@ -832,6 +1068,16 @@ export function AdminCurriculum() {
           {currentTopic.postEvaluationQuiz.map((quiz, index) => renderQuizCard(quiz, index, 'edit-posteval-quiz', 'posteval-quiz'))}
         </div>
       )}
+
+      {/* Bulk import post-eval questions */}
+      {!showAnalytics && (
+        <LevelImportPanel
+          target="questions"
+          accent="indigo"
+          contextLabel={`Section End Quiz — ${currentTopic?.title}`}
+          onImport={handleImportPostEvalQuestions}
+        />
+      )}
     </div>
     );
   };
@@ -882,6 +1128,23 @@ export function AdminCurriculum() {
               </div>
               <span className="font-bold text-sm">Section End Quiz</span>
             </div>
+
+            <div 
+              onClick={() => { setSelection(prev => ({ ...prev, subtopicId: 'finaltest' })); setActiveTab('video' as any); }}
+              className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex items-center gap-3 ${
+                selection.subtopicId === 'finaltest' ? 'border-amber-600 bg-amber-50 text-amber-900' : 'border-transparent hover:bg-slate-50 hover:border-slate-200 text-slate-700'
+              }`}
+            >
+              <div className={`p-1.5 rounded-lg ${selection.subtopicId === 'finaltest' ? 'bg-amber-200 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>
+                <Trophy className="w-4 h-4" />
+              </div>
+              <div className="flex-1 flex items-center justify-between">
+                <span className="font-bold text-sm">Final Topic Test</span>
+                {(currentTopic?.finalTestQuiz?.length ?? 0) > 0 && (
+                  <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">{currentTopic!.finalTestQuiz!.length}Q</span>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="h-px bg-slate-200 w-full"></div>
@@ -926,6 +1189,13 @@ export function AdminCurriculum() {
             <button onClick={() => openModal('add-subtopic')} className="w-full py-2.5 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 mt-auto">
               <Plus className="w-4 h-4" /> Add Sub-topic
             </button>
+            {/* Bulk import subtopics */}
+            <LevelImportPanel
+              target="subtopics"
+              accent="blue"
+              contextLabel={currentTopic?.title}
+              onImport={handleImportSubtopics}
+            />
           </div>
         </div>
       </div>
@@ -938,6 +1208,8 @@ export function AdminCurriculum() {
           renderPreEvaluation()
         ) : selection.subtopicId === 'postevaluation' ? (
           renderPostEvaluation()
+        ) : selection.subtopicId === 'finaltest' ? (
+          renderFinalTest()
         ) : currentSubtopic ? (
           <div className="space-y-4">
             <div className="flex justify-between items-center mb-2">
@@ -1029,6 +1301,14 @@ export function AdminCurriculum() {
                     {currentSubtopic.quizzes.map((quiz, index) => renderQuizCard(quiz, index, 'edit-quiz', 'quiz'))}
                   </div>
                 )}
+
+                {/* Bulk import quiz questions */}
+                <LevelImportPanel
+                  target="questions"
+                  accent="emerald"
+                  contextLabel={currentSubtopic.title}
+                  onImport={handleImportSubtopicQuestions}
+                />
               </div>
             )}
 

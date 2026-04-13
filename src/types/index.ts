@@ -114,6 +114,7 @@ export interface Prerequisite {
   description?: string;
   category: 'Major' | 'Intermediate' | 'Minor';
   questions?: Question[];
+  passingThreshold?: number; // 0-100 percentage required to pass
 }
 
 export interface SubTopic { 
@@ -121,16 +122,61 @@ export interface SubTopic {
   title: string; 
   videoUrl?: string;
   quizzes?: Question[];
+  sequenceOrder?: number;
 }
 
 export interface Topic { 
   id: string; 
   title: string; 
-  sequence: number; 
+  sequence: number;
+  sequenceOrder?: number;
   subTopics: SubTopic[]; 
   prerequisites?: Prerequisite[];
   preEvaluationQuiz?: Question[];
   postEvaluationQuiz?: Question[];
+  finalTestQuiz?: Question[]; // Admin-set end-of-topic test separate from post-eval
+}
+
+// ── AI-Assisted Learning Types ──────────────────────────────────────────────
+
+export interface AIMessage {
+  id: string;
+  role: 'tutor' | 'student';
+  content: string;
+  timestamp: string;
+}
+
+export interface AISession {
+  id: string;
+  topicId: string;
+  subtopicId?: string;
+  kind: 'prerequisite' | 'subtopic' | 'final-test';
+  messages: AIMessage[];
+  generatedQuiz?: Question[];
+  date: string;
+  resolved: boolean; // whether student eventually passed after AI help
+}
+
+export type LearningState =
+  | 'prerequisite-gate'
+  | 'prereq-quiz'
+  | 'prereq-failed'
+  | 'ai-teaching'
+  | 'ai-quiz'
+  | 'video'
+  | 'subtopic-quiz'
+  | 'subtopic-failed'
+  | 'final-test-intro'
+  | 'final-test'
+  | 'final-test-failed'
+  | 'topic-complete';
+
+export interface QuizContext {
+  kind: 'prerequisite' | 'subtopic' | 'final-test';
+  isAIGenerated: boolean;
+  emphasizedQuestionIds?: string[];
+  topicTitle?: string;
+  subtopicTitle?: string;
 }
 
 export interface StudentSubTopicProgress {
@@ -186,9 +232,18 @@ export interface StudentTopicProgress {
     pastAnswers?: Record<string, string>;
     attempts?: QuizAttempt[];
   };
+  finalTestQuiz?: Question[];
+  finalTestScore?: {
+    score: number;
+    total: number;
+    date: string;
+    attempts?: QuizAttempt[];
+  };
   subtopicsCompleted: number;
   totalSubtopics: number;
   subTopics: StudentSubTopicProgress[];
+  aiSessions?: AISession[];
+  aiSessionCount?: number;
 }
 
 export interface StudentCurriculumProgress {
@@ -198,4 +253,6 @@ export interface StudentCurriculumProgress {
   overallProgress: number;
   completedTopics: number;
   totalTopics: number;
+  aiSessionCount?: number;
+  lastAISession?: string;
 }

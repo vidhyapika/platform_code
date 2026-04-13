@@ -1,11 +1,12 @@
-import React, { useMemo } from 'react';
+﻿import React, { useMemo } from 'react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { motion } from 'motion/react';
-import { Users, BookOpen, TrendingUp, FileQuestion, Layers, ClipboardList, Video, CheckCircle2, GraduationCap } from 'lucide-react';
+import { Users, BookOpen, TrendingUp, FileQuestion, Layers, ClipboardList, Video, CheckCircle2, GraduationCap, Brain, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   MOCK_STANDARDS, MOCK_CLASSES, INITIAL_STUDENTS, INITIAL_CURRICULUM_DATA
 } from '../../data/adminMockData';
+import { ClassHeatmap } from '../../components/ClassHeatmap';
 
 export function AdminDashboard() {
   const navigate = useNavigate();
@@ -19,7 +20,6 @@ export function AdminDashboard() {
     show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
   };
 
-  // ── Computed stats ────────────────────────────────────────────────────────
   const stats = useMemo(() => {
     const totalStudents = INITIAL_STUDENTS.length;
     const totalStandards = MOCK_STANDARDS.length;
@@ -51,10 +51,12 @@ export function AdminDashboard() {
       ? Math.round((videoCoverage / totalSubtopicCount) * 100)
       : 0;
 
-    return { totalStudents, totalStandards, totalSections, totalTopics, totalSubTopics, totalQuizQuestions, videoCoveragePct };
+    const totalAiSessions = INITIAL_STUDENTS.reduce((acc, s) => acc + (s.aiSessionCount ?? 0), 0);
+    const strugglingStudents = INITIAL_STUDENTS.filter(s => s.learningStatus === 'struggling').length;
+
+    return { totalStudents, totalStandards, totalSections, totalTopics, totalSubTopics, totalQuizQuestions, videoCoveragePct, totalAiSessions, strugglingStudents };
   }, []);
 
-  // ── Enrollment breakdown per standard + section ───────────────────────────
   const enrollmentRows = useMemo(() => {
     return MOCK_STANDARDS.flatMap(std => {
       const sections = MOCK_CLASSES.filter(c => c.standardId === std.id);
@@ -69,7 +71,6 @@ export function AdminDashboard() {
     });
   }, []);
 
-  // ── Curriculum topic overview ─────────────────────────────────────────────
   const curriculumRows = useMemo(() => {
     const rows: { standard: string; topic: string; subtopics: number; questions: number; hasVideo: boolean }[] = [];
     for (const std of INITIAL_CURRICULUM_DATA) {
@@ -87,7 +88,6 @@ export function AdminDashboard() {
     return rows;
   }, []);
 
-  // ── Recent 5 students (latest joinedAt) ───────────────────────────────────
   const recentStudents = useMemo(() => {
     return [...INITIAL_STUDENTS]
       .sort((a, b) => new Date(b.joinedAt ?? '').getTime() - new Date(a.joinedAt ?? '').getTime())
@@ -97,6 +97,37 @@ export function AdminDashboard() {
         standardName: MOCK_STANDARDS.find(st => st.id === s.standardId)?.name ?? '',
         sectionName: MOCK_CLASSES.find(c => c.id === s.classId)?.name ?? '',
       }));
+  }, []);
+
+  const atRiskStudents = useMemo(() => {
+    return INITIAL_STUDENTS.filter(s => s.learningStatus === 'struggling').map(s => ({
+      ...s,
+      standardName: MOCK_STANDARDS.find(st => st.id === s.standardId)?.name ?? '',
+      sectionName: MOCK_CLASSES.find(c => c.id === s.classId)?.name ?? '',
+    }));
+  }, []);
+
+  const heatmapSections = useMemo(() => {
+    return MOCK_CLASSES.map(cls => ({
+      id: cls.id,
+      name: cls.name,
+      standardId: cls.standardId,
+      standardName: MOCK_STANDARDS.find(s => s.id === cls.standardId)?.name ?? '',
+    }));
+  }, []);
+
+  const heatmapTopics = useMemo(() => {
+    const topicMap = new Map<string, { id: string; title: string; topicIdx: number }>();
+    for (const std of INITIAL_CURRICULUM_DATA) {
+      for (const cls of std.classes) {
+        cls.curriculum.forEach((topic, idx) => {
+          if (!topicMap.has(topic.id)) {
+            topicMap.set(topic.id, { id: topic.id, title: topic.title, topicIdx: idx });
+          }
+        });
+      }
+    }
+    return Array.from(topicMap.values());
   }, []);
 
   const statCards = [
@@ -136,6 +167,15 @@ export function AdminDashboard() {
       bg: 'bg-orange-50',
       border: 'border-orange-100',
     },
+    {
+      title: 'AI Sessions',
+      value: stats.totalAiSessions,
+      sub: `${stats.strugglingStudents} students need help`,
+      icon: Brain,
+      color: 'text-indigo-600',
+      bg: 'bg-indigo-50',
+      border: 'border-indigo-100',
+    },
   ];
 
   return (
@@ -155,7 +195,7 @@ export function AdminDashboard() {
         </motion.div>
 
         {/* Stat Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
           {statCards.map((card, i) => (
             <motion.div key={i} variants={itemVariants} className={`bg-white p-5 rounded-2xl border ${card.border} shadow-sm`}>
               <div className="flex items-start justify-between mb-4">
@@ -169,6 +209,52 @@ export function AdminDashboard() {
             </motion.div>
           ))}
         </div>
+
+        {/* At-Risk Students Alert */}
+        {atRiskStudents.length > 0 && (
+          <motion.div variants={itemVariants} className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-9 h-9 bg-amber-100 rounded-xl flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-amber-600" />
+              </div>
+              <div>
+                <h2 className="text-sm font-extrabold text-amber-900">Students Needing Attention</h2>
+                <p className="text-xs text-amber-600">{atRiskStudents.length} student{atRiskStudents.length !== 1 ? 's are' : ' is'} struggling and may need additional support</p>
+              </div>
+              <button onClick={() => navigate('/admin/students')} className="ml-auto text-xs font-bold text-amber-700 hover:text-amber-900 px-3 py-1.5 bg-amber-100 hover:bg-amber-200 rounded-lg transition-colors">
+                View All →
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {atRiskStudents.map(s => (
+                <div key={s.id} className="bg-white border border-amber-100 rounded-xl p-3 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center font-extrabold text-sm shrink-0">
+                    {s.studentName.charAt(0)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-slate-900 truncate">{s.studentName}</p>
+                    <p className="text-xs text-slate-500">{s.standardName} · {s.sectionName}</p>
+                  </div>
+                  {(s.aiSessionCount ?? 0) > 0 && (
+                    <div className="flex items-center gap-1 px-2 py-1 bg-indigo-50 rounded-lg shrink-0">
+                      <Brain className="w-3 h-3 text-indigo-600" />
+                      <span className="text-[10px] font-extrabold text-indigo-700">{s.aiSessionCount}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Class Progress Heatmap */}
+        <motion.div variants={itemVariants}>
+          <ClassHeatmap
+            sections={heatmapSections}
+            topics={heatmapTopics}
+            students={INITIAL_STUDENTS}
+          />
+        </motion.div>
 
         {/* Middle: Enrollment + Curriculum */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
