@@ -8,6 +8,7 @@ import type { StudentTopicProgress } from '../types';
 
 interface LearningPathProps {
   topics: StudentTopicProgress[];
+  onTopicClick?: (topic: StudentTopicProgress, idx: number) => void;
 }
 
 const STATUS_COLORS = {
@@ -22,7 +23,7 @@ const CATEGORY_COLORS = {
   Minor:        'bg-yellow-100 text-yellow-700',
 };
 
-export function LearningPath({ topics }: LearningPathProps) {
+export function LearningPath({ topics, onTopicClick }: LearningPathProps) {
   const navigate = useNavigate();
 
   return (
@@ -81,7 +82,12 @@ export function LearningPath({ topics }: LearningPathProps) {
               {/* Card */}
               <div
                 className={`flex-1 rounded-2xl border-2 ${colors.bg} ${colors.border} p-5 shadow-sm hover:shadow-md transition-shadow ${isLocked ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-                onClick={() => !isLocked && navigate('/learn', { state: { topicIdx: idx } })}
+                onClick={() => {
+                  if (!isLocked) {
+                    if (onTopicClick) onTopicClick(topic, idx);
+                    else navigate('/learn', { state: { topicIdx: idx } });
+                  }
+                }}
               >
                 {/* Header row */}
                 <div className="flex items-start justify-between gap-3 mb-3">
@@ -106,7 +112,11 @@ export function LearningPath({ topics }: LearningPathProps) {
                   {/* CTA button */}
                   {!isLocked && (
                     <button
-                      onClick={e => { e.stopPropagation(); navigate('/learn', { state: { topicIdx: idx } }); }}
+                      onClick={e => { 
+                        e.stopPropagation(); 
+                        if (onTopicClick) onTopicClick(topic, idx);
+                        else navigate('/learn', { state: { topicIdx: idx } });
+                      }}
                       className={`flex-shrink-0 flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-xl transition-colors ${
                         topic.status === 'completed'   ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' :
                         topic.status === 'in-progress' ? 'bg-blue-500 text-white hover:bg-blue-600 shadow-sm' :

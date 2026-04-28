@@ -255,7 +255,22 @@ export function Dashboard() {
                   <p className="text-xs text-slate-500 mt-0.5">Your upcoming topics across all classes</p>
                 </div>
               </div>
-              <LearningPath topics={classesStats.flatMap(c => c.topics)} />
+              <LearningPath 
+                topics={classesStats.flatMap(c => c.topics)} 
+                onTopicClick={(topic) => {
+                  const classIdx = classesStats.findIndex(c => c.topics.some(t => t.id === topic.id));
+                  if (classIdx === -1) return;
+                  const realIdx = classesStats[classIdx].topics.findIndex((t: any) => t.id === topic.id);
+                  navigate('/learn', { 
+                    state: { 
+                      topicIdx: realIdx, 
+                      studentTopic: topic,
+                      selectedClassIdx: classIdx,
+                      curriculums: curriculumData?.curriculums
+                    } 
+                  });
+                }}
+              />
             </motion.div>
 
             {/* Recent Activity + Quick Links */}
