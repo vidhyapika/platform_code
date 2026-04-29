@@ -125,7 +125,8 @@ export function CoursePlayer() {
       text: q.text ?? '',
       type: q.type === 'true_false' ? ('boolean' as const)
         : q.type === 'image_upload' ? ('image_upload' as const)
-          : ('mcq' as const),
+          : q.type === 'text' ? ('text' as const)
+            : ('mcq' as const),
       options: q.options,
       correctAnswer: q.correctAnswer ?? '',
       explanation: q.explanation ?? '',

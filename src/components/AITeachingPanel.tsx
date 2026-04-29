@@ -154,7 +154,7 @@ export function AITeachingPanel({
       const questions: Question[] = res.data.questions.map((q: any) => ({
         id: q.id,
         text: q.text,
-        type: q.type === 'true_false' ? 'boolean' : q.type === 'image_upload' ? 'image_upload' : 'mcq',
+        type: q.type === 'true_false' ? 'boolean' : q.type === 'image_upload' ? 'image_upload' : q.type === 'text' ? 'text' : 'mcq',
         options: q.options,
         correctAnswer: q.correctAnswer ?? '',
         explanation: '',
