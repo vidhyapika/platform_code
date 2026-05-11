@@ -4,6 +4,8 @@ import {
   listQuestions,
   QuestionContextType,
 } from "../../../../backend/repositories/curriculumRepo";
+import { requireDemoScope } from "../../../../backend/utils/demoAdminScope";
+import { getDb } from "../../../../backend/firebase/admin";
 import { z } from "zod";
 
 const CreateSchema = z.object({
@@ -33,6 +35,22 @@ export async function GET(req: Request) {
       contextType: url.searchParams.get("contextType"),
       contextId: url.searchParams.get("contextId"),
     });
+    const demo = await requireDemoScope(user);
+    if (demo) {
+      // Allow questions only for demo topic/subtopic/prereq scopes.
+      const db = getDb();
+      if (contextType === "finaltest") {
+        if (!demo.topicIds.includes(contextId)) return Response.json({ questions: [] });
+      } else if (contextType === "subtopic") {
+        const st = await db.collection("subTopics").doc(contextId).get();
+        const topicId = (st.exists ? (st.data() as any).topicId : null) as string | null;
+        if (!topicId || !demo.topicIds.includes(topicId)) return Response.json({ questions: [] });
+      } else if (contextType === "prereq") {
+        const p = await db.collection("prerequisites").doc(contextId).get();
+        const topicId = (p.exists ? (p.data() as any).topicId : null) as string | null;
+        if (!topicId || !demo.topicIds.includes(topicId)) return Response.json({ questions: [] });
+      }
+    }
     const questions = await listQuestions(contextType as QuestionContextType, contextId);
     return Response.json({ questions });
   } catch (e: any) {

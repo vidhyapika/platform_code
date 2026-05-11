@@ -9,6 +9,7 @@ type User = {
 type AuthContextType = {
   token: string | null;
   user: User | null;
+  ready: boolean;
   login: (email: string, password: string) => Promise<{ requirePasswordReset?: boolean; error?: string }>;
   logout: () => void;
   isAdmin: boolean;
@@ -21,11 +22,21 @@ const TOKEN_KEY = 'vidhyapika_token';
 const USER_KEY = 'vidhyapika_user';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
-  const [user, setUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem(USER_KEY);
-    return saved ? JSON.parse(saved) : null;
-  });
+  // Next.js can render on the server; localStorage is only available in the browser.
+  const [token, setToken] = useState<string | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    try {
+      const t = localStorage.getItem(TOKEN_KEY);
+      const saved = localStorage.getItem(USER_KEY);
+      setToken(t);
+      setUser(saved ? JSON.parse(saved) : null);
+    } finally {
+      setReady(true);
+    }
+  }, []);
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await fetch('/api/login', {
@@ -57,6 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         token,
         user,
+        ready,
         login,
         logout,
         isAdmin: user?.role === 'admin',

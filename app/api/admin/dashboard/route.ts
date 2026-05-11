@@ -6,6 +6,7 @@ import {
 } from "../../../../backend/repositories/userRepo";
 import { getDb } from "../../../../backend/firebase/admin";
 import { ADMIN_JSON_CACHE_CONTROL } from "../../../../backend/utils/adminApiCache";
+import { requireDemoScope } from "../../../../backend/utils/demoAdminScope";
 
 export async function GET(req: Request) {
   const user = await verifyJWT(req.headers.get("authorization"));
@@ -13,6 +14,49 @@ export async function GET(req: Request) {
   if (err) return err;
 
   const db = getDb();
+  const demo = await requireDemoScope(user);
+
+  if (demo) {
+    const [studentSnap, parentSnap, subTopicsSnap] = await Promise.all([
+      db.collection("users").where("email", "==", demo.studentEmail).limit(1).get(),
+      db.collection("users").where("email", "==", demo.parentEmail).limit(1).get(),
+      db.collection("subTopics").where("topicId", "in", demo.topicIds.slice(0, 10)).get(),
+    ]);
+
+    const totalSubTopics = subTopicsSnap.size;
+    const subTopicsWithVideo = subTopicsSnap.docs.filter((d) => {
+      const u = (d.data() as any).youtubeUrl;
+      return typeof u === "string" && u.trim() !== "";
+    }).length;
+    const videoCoverage =
+      totalSubTopics > 0 ? Math.round((subTopicsWithVideo / totalSubTopics) * 100) : 0;
+
+    return Response.json(
+      {
+        stats: {
+          totalStudents: studentSnap.size,
+          totalParents: parentSnap.size,
+          totalStandards: 1,
+          totalClasses: 1,
+          totalTopics: demo.topicIds.length,
+          totalSubTopics,
+          totalQuestions: 0, // intentionally not counted to avoid full scan; curriculum pages load actual counts per scope
+          totalAISessions: 0,
+          flaggedStudents: 0,
+          videoCoverage,
+        },
+        recentStudents: [
+          {
+            id: demo.studentId,
+            name: "Arjun (Demo Student)",
+            email: demo.studentEmail,
+            role: "student",
+          },
+        ],
+      },
+      { headers: { "Cache-Control": ADMIN_JSON_CACHE_CONTROL } }
+    );
+  }
 
   const [
     totalStudents,

@@ -3,6 +3,7 @@ import {
   listSubTopics,
   createSubTopic,
 } from "../../../../../../backend/repositories/curriculumRepo";
+import { requireDemoScope } from "../../../../../../backend/utils/demoAdminScope";
 import { z } from "zod";
 
 const CreateSchema = z.object({
@@ -18,6 +19,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (err) return err;
 
   const { id: topicId } = await params;
+  const demo = await requireDemoScope(user);
+  if (demo && !demo.topicIds.includes(topicId)) {
+    return Response.json({ subTopics: [] });
+  }
   const subTopics = await listSubTopics(topicId);
   return Response.json({ subTopics });
 }

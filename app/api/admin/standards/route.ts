@@ -3,6 +3,7 @@ import {
   listStandards,
   createStandard,
 } from "../../../../backend/repositories/curriculumRepo";
+import { requireDemoScope } from "../../../../backend/utils/demoAdminScope";
 import { z } from "zod";
 
 const CreateSchema = z.object({
@@ -16,7 +17,11 @@ export async function GET(req: Request) {
   const err = requireAdmin(user);
   if (err) return err;
 
-  const standards = await listStandards();
+  const demo = await requireDemoScope(user);
+  let standards = await listStandards();
+  if (demo) {
+    standards = standards.filter((s) => s.id === demo.standardId);
+  }
   return Response.json({ standards });
 }
 

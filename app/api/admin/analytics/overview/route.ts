@@ -5,6 +5,7 @@ import { getClassesByIds, getStandardsByIds } from "../../../../../backend/repos
 import { isFirestoreResourceExhausted } from "../../../../../backend/utils/firestoreErrors";
 import { queryDocumentsWhereIn } from "../../../../../backend/utils/firestoreQuery";
 import { ADMIN_JSON_CACHE_CONTROL } from "../../../../../backend/utils/adminApiCache";
+import { requireDemoScope } from "../../../../../backend/utils/demoAdminScope";
 
 /** Optional cap for very large installs; omit for full-platform analytics (default). Max 2000. */
 const TOPIC_LIMIT_CAP = 2000;
@@ -59,6 +60,7 @@ export async function GET(req: Request) {
   if (err) return err;
 
   const db = getDb();
+  const demo = await requireDemoScope(user);
   const url = new URL(req.url);
   const topicLimitRaw = url.searchParams.get("topicLimit");
   let topicLimit: number | undefined;
@@ -70,6 +72,9 @@ export async function GET(req: Request) {
   try {
     // ── Curriculum: topics (full list by default; optional limit for huge collections) ──
     let topicsQuery: Query = db.collection("topics");
+    if (demo) {
+      topicsQuery = db.collection("topics").where("__name__", "in", demo.topicIds.slice(0, 10));
+    }
     if (topicLimit != null) {
       topicsQuery = topicsQuery.orderBy("order", "asc").limit(topicLimit);
     }

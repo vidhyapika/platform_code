@@ -8,6 +8,7 @@ import { getDb } from "../../../../backend/firebase/admin";
 import { queryDocumentsWhereIn } from "../../../../backend/utils/firestoreQuery";
 import { ADMIN_JSON_CACHE_CONTROL } from "../../../../backend/utils/adminApiCache";
 import { z } from "zod";
+import { requireDemoScope } from "../../../../backend/utils/demoAdminScope";
 
 const CreateStudentSchema = z.object({
   name: z.string().min(1),
@@ -29,7 +30,11 @@ export async function GET(req: Request) {
   const err = requireAdmin(user);
   if (err) return err;
 
-  const students = await listUsersByRole("student");
+  const demo = await requireDemoScope(user);
+  let students = await listUsersByRole("student");
+  if (demo) {
+    students = students.filter((s) => s.id === demo.studentId || s.email === demo.studentEmail);
+  }
 
   const db = getDb();
   const studentIds = students.map((s) => s.id);

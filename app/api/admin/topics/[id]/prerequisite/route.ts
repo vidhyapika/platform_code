@@ -3,6 +3,7 @@ import {
   listPrerequisites,
   createPrerequisite,
 } from "../../../../../../backend/repositories/curriculumRepo";
+import { requireDemoScope } from "../../../../../../backend/utils/demoAdminScope";
 import { z } from "zod";
 
 const CreateSchema = z.object({
@@ -18,6 +19,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (err) return err;
 
   const { id: topicId } = await params;
+  const demo = await requireDemoScope(user);
+  if (demo && !demo.topicIds.includes(topicId)) {
+    return Response.json({ prerequisites: [] });
+  }
   const prerequisites = await listPrerequisites(topicId);
   return Response.json({ prerequisites });
 }

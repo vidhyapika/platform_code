@@ -3,6 +3,7 @@ import {
   listClasses,
   createClass,
 } from "../../../../../../backend/repositories/curriculumRepo";
+import { requireDemoScope } from "../../../../../../backend/utils/demoAdminScope";
 import { z } from "zod";
 
 const CreateSchema = z.object({
@@ -16,7 +17,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (err) return err;
 
   const { id: standardId } = await params;
-  const classes = await listClasses(standardId);
+  const demo = await requireDemoScope(user);
+  let classes = await listClasses(standardId);
+  if (demo) {
+    classes = classes.filter((c) => c.id === demo.classId && c.standardId === demo.standardId);
+  }
   return Response.json({ classes });
 }
 

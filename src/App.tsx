@@ -16,6 +16,7 @@ import { Assignments } from './screens/Assignments';
 import { Schedule } from './screens/Schedule';
 import { Achievements } from './screens/Achievements';
 import { Settings } from './screens/Settings';
+import { DemoPortal } from './screens/DemoPortal';
 
 // Admin Pages
 import { AdminLogin } from './screens/admin/AdminLogin';
@@ -34,7 +35,8 @@ import { ParentDashboard } from './screens/parent/ParentDashboard';
 
 // Guard: redirects to /admin/login when not authenticated as admin
 function AdminRoute({ children }: { children: React.ReactNode }) {
-  const { token, isAdmin } = useAuth();
+  const { token, isAdmin, ready } = useAuth();
+  if (!ready) return <div className="min-h-screen bg-slate-50" />;
   if (!token || !isAdmin) {
     return <Navigate to="/admin/login" replace />;
   }
@@ -42,7 +44,8 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 }
 
 function ParentRoute({ children }: { children: React.ReactNode }) {
-  const { token, user } = useAuth();
+  const { token, user, ready } = useAuth();
+  if (!ready) return <div className="min-h-screen bg-slate-50" />;
   if (!token || user?.role !== 'parent') {
     return <Navigate to="/parent/login" replace />;
   }
@@ -50,9 +53,10 @@ function ParentRoute({ children }: { children: React.ReactNode }) {
 }
 
 function EnrollmentRoute({ children }: { children: React.ReactNode }) {
-  const { token, user } = useAuth();
+  const { token, user, ready } = useAuth();
   const { data, loading } = useApiGet<{ curriculums: any[] }>('/api/student/curriculum', []);
 
+  if (!ready) return <div className="min-h-screen bg-slate-50" />;
   if (!token || user?.role !== 'student') return <Navigate to="/login" replace />;
   if (loading) return <div className="min-h-screen bg-slate-50" />;
   if (!data?.curriculums || data.curriculums.length === 0) return <Navigate to="/dashboard" replace />;
@@ -66,6 +70,7 @@ export default function App() {
       <Routes>
         {/* Student Routes */}
         <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/demo" element={<DemoPortal />} />
         <Route path="/login" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
