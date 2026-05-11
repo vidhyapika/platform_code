@@ -15,7 +15,16 @@ export function DemoPortal() {
     setLoadingRole(role);
     try {
       // Ensure demo data exists; session endpoint also bootstraps, but this makes errors clearer.
-      await fetch("/api/demo/bootstrap", { method: "POST" });
+      const boot = await fetch("/api/demo/bootstrap", { method: "POST" });
+      const bootJson = await boot.json().catch(() => null);
+      if (!boot.ok) {
+        const msg =
+          bootJson?.error
+            ? `${bootJson.error}${bootJson.message ? `: ${bootJson.message}` : ""}`
+            : `Demo bootstrap failed (${boot.status})`;
+        const hint = bootJson?.hint ? `\n\nHint: ${bootJson.hint}` : "";
+        throw new Error(`${msg}${hint}`);
+      }
 
       const res = await fetch("/api/demo/session", {
         method: "POST",
@@ -23,7 +32,14 @@ export function DemoPortal() {
         body: JSON.stringify({ role }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "Demo login failed");
+      if (!res.ok) {
+        const msg =
+          data?.error
+            ? `${data.error}${data.message ? `: ${data.message}` : ""}`
+            : `Demo login failed (${res.status})`;
+        const hint = data?.hint ? `\n\nHint: ${data.hint}` : "";
+        throw new Error(`${msg}${hint}`);
+      }
 
       localStorage.setItem(TOKEN_KEY, data.token);
       localStorage.setItem(USER_KEY, JSON.stringify(data.user));
