@@ -90,7 +90,7 @@ function buildStudentCurriculum(): StudentCurriculumProgress {
                 score: quizTotal,
                 total: quizTotal,
                 date: '2026-03-15',
-                pastAnswers: Object.fromEntries((sub.quizzes ?? []).map(q => [q.id, q.correctAnswer])),
+                pastAnswers: Object.fromEntries((sub.quizzes ?? []).map((q) => [q.id, q.correctAnswer ?? ''])),
                 attempts: [
                   { score: Math.max(1, quizTotal - 2), total: quizTotal, date: '2026-03-10' },
                   { score: Math.max(1, quizTotal - 1), total: quizTotal, date: '2026-03-12' },
@@ -143,7 +143,7 @@ function buildStudentCurriculum(): StudentCurriculumProgress {
               score: preEvalTotal,
               total: preEvalTotal,
               date:  '2026-03-11',
-              pastAnswers: Object.fromEntries((topic.preEvaluationQuiz ?? []).map(q => [q.id, q.correctAnswer])),
+              pastAnswers: Object.fromEntries((topic.preEvaluationQuiz ?? []).map((q) => [q.id, q.correctAnswer ?? ''])),
               attempts: [
                 { score: Math.max(1, preEvalTotal - 1), total: preEvalTotal, date: '2026-03-09' },
                 { score: preEvalTotal,                  total: preEvalTotal, date: '2026-03-11' },
@@ -156,7 +156,7 @@ function buildStudentCurriculum(): StudentCurriculumProgress {
               score: postEvalTotal,
               total: postEvalTotal,
               date:  '2026-03-16',
-              pastAnswers: Object.fromEntries((topic.postEvaluationQuiz ?? []).map(q => [q.id, q.correctAnswer])),
+              pastAnswers: Object.fromEntries((topic.postEvaluationQuiz ?? []).map((q) => [q.id, q.correctAnswer ?? ''])),
               attempts: [
                 { score: Math.max(1, postEvalTotal - 1), total: postEvalTotal, date: '2026-03-14' },
                 { score: postEvalTotal,                  total: postEvalTotal, date: '2026-03-16' },

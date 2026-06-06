@@ -327,7 +327,7 @@ export function parseCSV(csvText: string, existingStandards: Standard[] = []): P
     const qType = normalizeFullQuestionType(r.question_type);
     const difficulty = (['Easy', 'Medium', 'Hard'].includes(r.difficulty) ? r.difficulty : 'Medium') as 'Easy' | 'Medium' | 'Hard';
     let options: string[] | undefined;
-    let correctAnswer = r.correct_answer;
+    let correctAnswer: string | undefined = r.correct_answer;
 
     if (r.image_url) {
       try {
