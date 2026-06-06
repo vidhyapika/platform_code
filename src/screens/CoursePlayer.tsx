@@ -8,8 +8,12 @@ import {
 } from 'lucide-react';
 import { InlineQuiz, type QuizSubmitGradingResult, type AiCoachingSessionSummary } from '../components/InlineQuiz';
 import { gradingFromSubmitResponse } from '../utils/quizGrading';
-import { AITeachingPanel } from '../components/AITeachingPanel';
+import { VoiceClassroomPanel } from '../components/voice/VoiceClassroomPanel';
+import { resolveFailedQuestionsForVoice } from '../lib/voice/failedQuestionsFromQuiz';
+import { clearVoiceSessionStart } from '../lib/voice/voiceSessionStartGuard';
 import { FinalTestScreen } from '../components/FinalTestScreen';
+import { QuizCoachingFailFooter, type QuizCoachingActionsConfig } from '../components/QuizCoachingActions';
+import { deriveQuizCoachingState } from '../utils/quizCoachingState';
 import { TopicOverviewHistory } from '../components/TopicOverviewHistory';
 import { TopicLearningOutline } from '../components/TopicLearningOutline';
 import { apiFetch, useApiGet } from '../hooks/useApi';
@@ -68,8 +72,9 @@ interface AiConfig {
   topicId?: string;
   subTopicId?: string;
   contextId?: string;
-  failedQuestions?: FailedQuestion[];
-  retakeQuestions?: Question[];
+  failedQuestions: FailedQuestion[];
+  passingThreshold?: number;
+  entryIntent: 'coach' | 'retake';
   onPassed: () => void;
   onBack: () => void;
 }
@@ -157,8 +162,12 @@ export function CoursePlayer() {
   /** Desktop (md+): topic path column visible */
   const [desktopOutlineExpanded, setDesktopOutlineExpanded] = useState(true);
   const [quizResult, setQuizResult] = useState<{ passed: boolean } | null>(null);
+  const [quizReturnToken, setQuizReturnToken] = useState(0);
   const [aiTeach, setAiTeach] = useState<AiConfig | null>(null);
   const lastFailedQuestions = useRef<FailedQuestion[]>([]);
+  const lastQuizAnswers = useRef<Record<string, string>>({});
+  const lastQuizGrading = useRef<QuizSubmitGradingResult | null>(null);
+  const lastQuizQuestions = useRef<Question[]>([]);
 
   const applyLearningStage = useCallback((s: LearningStage) => {
     if (!flow) return;
@@ -235,6 +244,11 @@ export function CoursePlayer() {
         solution: string;
       }>;
       messages?: Array<{ role: 'tutor' | 'student'; content: string; timestamp: number }>;
+      transcript?: Array<{ role: string; text: string; ts: number }>;
+      notes?: string;
+      assignment?: string;
+      voiceStatus?: 'active' | 'ended';
+      whiteboardLog?: Record<string, unknown>[];
     }>;
   }>(quizAiSessionsUrl, [quizAiSessionsUrl]);
 
@@ -250,9 +264,67 @@ export function CoursePlayer() {
         mistakes: s.mistakes,
         drills: s.drills,
         messages: s.messages,
+        transcript: s.transcript,
+        notes: s.notes,
+        assignment: s.assignment,
+        voiceStatus: s.voiceStatus,
+        whiteboardLog: s.whiteboardLog,
       })),
     [aiSessionsPayload],
   );
+
+  const aiSessionsForCoaching = useMemo(
+    () =>
+      (aiSessionsPayload?.sessions ?? []).map((s) => ({
+        id: s.id,
+        voiceStatus: s.voiceStatus,
+        contextType: (s as { contextType?: string }).contextType,
+        contextId: (s as { contextId?: string | null }).contextId,
+      })),
+    [aiSessionsPayload],
+  );
+
+  const topicStatusForCoaching = useMemo(
+    () =>
+      topicStatus
+        ? {
+            progress: topicStatus.progress,
+            subTopicProgress: topicStatus.subTopicProgress,
+            prereqQuizAttempts: topicStatus.prereqQuizAttempts,
+            subtopicQuizAttempts: topicStatus.subtopicQuizAttempts,
+            finalTestAttempts: topicStatus.finalTestAttempts,
+          }
+        : null,
+    [topicStatus],
+  );
+
+  const coachingHintIds = useMemo(() => {
+    const prereqIds: string[] = [];
+    const subTopicIds: string[] = [];
+    if (!topic || !topicStatusForCoaching) return { prereqIds, subTopicIds };
+    for (const p of flow?.prereqs ?? []) {
+      const state = deriveQuizCoachingState({
+        contextType: 'prereq',
+        contextId: p.id,
+        questions: p.questions ?? [],
+        topicStatus: topicStatusForCoaching,
+        aiSessions: aiSessionsForCoaching,
+      });
+      if (state.coachingAvailable) prereqIds.push(p.id);
+    }
+    for (const sub of topic.subTopics ?? []) {
+      if (!(sub.quizzes?.length ?? 0)) continue;
+      const state = deriveQuizCoachingState({
+        contextType: 'subtopic',
+        contextId: sub.id,
+        questions: sub.quizzes ?? [],
+        topicStatus: topicStatusForCoaching,
+        aiSessions: aiSessionsForCoaching,
+      });
+      if (state.coachingAvailable) subTopicIds.push(sub.id);
+    }
+    return { prereqIds, subTopicIds };
+  }, [topic, flow?.prereqs, topicStatusForCoaching, aiSessionsForCoaching]);
 
   const prevAiTeachRef = useRef<AiConfig | null>(null);
   useEffect(() => {
@@ -288,6 +360,123 @@ export function CoursePlayer() {
 
   const { prereqs, subSteps, hasFinalTest } = flow;
   const learntTopic = topic;
+
+  const closeAiOverlay = useCallback(() => {
+    if (aiTeach?.topicId && aiTeach?.contextId) {
+      clearVoiceSessionStart(
+        aiTeach.topicId,
+        aiTeach.contextId,
+        aiTeach.kind === 'prerequisite' ? 'prereq' : 'subtopic',
+      );
+    }
+    setAiTeach(null);
+    setQuizResult(null);
+    setQuizReturnToken((t) => t + 1);
+    void refetchAiSessions();
+    void refetchTopicStatus();
+  }, [aiTeach, refetchAiSessions, refetchTopicStatus]);
+
+  const handleQuizDoLater = useCallback(() => {
+    setQuizResult(null);
+    setQuizReturnToken((t) => t + 1);
+  }, []);
+
+  function openAiTeach(
+    config: Omit<AiConfig, 'failedQuestions' | 'entryIntent' | 'onBack'> & {
+      questions: Question[];
+      passingThreshold: number;
+      entryIntent: 'coach' | 'retake';
+    },
+  ) {
+    const contextType = config.kind === 'prerequisite' ? 'prereq' : 'subtopic';
+    const coaching = deriveQuizCoachingState({
+      contextType,
+      contextId: config.contextId ?? '',
+      questions: config.questions,
+      topicStatus: topicStatusForCoaching,
+      aiSessions: aiSessionsForCoaching,
+      apiFailed: lastFailedQuestions.current.length ? lastFailedQuestions.current : undefined,
+    });
+    const failed = resolveFailedQuestionsForVoice({
+      apiFailed:
+        coaching.failedQuestions.length > 0
+          ? coaching.failedQuestions
+          : lastFailedQuestions.current,
+      questions: config.questions,
+      answers: lastQuizAnswers.current,
+      grading: lastQuizGrading.current,
+    });
+    if (!failed) {
+      window.alert('Complete the quiz first so we can review your missed questions.');
+      return;
+    }
+    setAiTeach({
+      topicTitle: config.topicTitle,
+      subtopicTitle: config.subtopicTitle,
+      kind: config.kind,
+      topicId: config.topicId,
+      subTopicId: config.subTopicId,
+      contextId: config.contextId,
+      failedQuestions: failed,
+      passingThreshold: config.passingThreshold,
+      entryIntent: config.entryIntent,
+      onPassed: config.onPassed,
+      onBack: closeAiOverlay,
+    });
+  }
+
+  function buildCoachingActionsForQuiz(params: {
+    contextType: 'prereq' | 'subtopic';
+    contextId: string;
+    questions: Question[];
+    onPassed: () => void;
+    subtopicTitle?: string;
+    kind: 'prerequisite' | 'subtopic';
+    topicId?: string;
+    subTopicId?: string;
+    passingThreshold: number;
+  }): QuizCoachingActionsConfig | undefined {
+    const coaching = deriveQuizCoachingState({
+      contextType: params.contextType,
+      contextId: params.contextId,
+      questions: params.questions,
+      topicStatus: topicStatusForCoaching,
+      aiSessions: aiSessionsForCoaching,
+    });
+    if (!coaching.coachingAvailable && !coaching.atCoachingCap) return undefined;
+    return {
+      coachingAvailable: coaching.coachingAvailable,
+      canStartAiRetake: coaching.canStartAiRetake,
+      hasCompletedTutorSession: coaching.hasCompletedTutorSession,
+      atCoachingCap: coaching.atCoachingCap,
+      onStartTutor: () =>
+        openAiTeach({
+          topicTitle: learntTopic.title,
+          subtopicTitle: params.subtopicTitle,
+          kind: params.kind,
+          topicId: params.topicId,
+          subTopicId: params.subTopicId,
+          contextId: params.contextId,
+          questions: params.questions,
+          passingThreshold: params.passingThreshold,
+          entryIntent: 'coach',
+          onPassed: params.onPassed,
+        }),
+      onStartAiRetake: () =>
+        openAiTeach({
+          topicTitle: learntTopic.title,
+          subtopicTitle: params.subtopicTitle,
+          kind: params.kind,
+          topicId: params.topicId,
+          subTopicId: params.subTopicId,
+          contextId: params.contextId,
+          questions: params.questions,
+          passingThreshold: params.passingThreshold,
+          entryIntent: 'retake',
+          onPassed: params.onPassed,
+        }),
+    };
+  }
 
   async function submitQuizToApi(params: {
     contextType: 'prereq' | 'subtopic' | 'finaltest';
@@ -478,6 +667,23 @@ export function CoursePlayer() {
 
     if (phase === 'prereq') {
       const prereq = prereqs[prereqIdx];
+      const prereqCoachingActions = buildCoachingActionsForQuiz({
+        contextType: 'prereq',
+        contextId: prereq.id,
+        questions: prereq.questions ?? [],
+        kind: 'prerequisite',
+        topicId: learntTopic.id,
+        passingThreshold: prereq.passingThreshold ?? 60,
+        onPassed: advancePrereq,
+      });
+      const prereqFailCoaching = deriveQuizCoachingState({
+        contextType: 'prereq',
+        contextId: prereq.id,
+        questions: prereq.questions ?? [],
+        topicStatus: topicStatusForCoaching,
+        aiSessions: aiSessionsForCoaching,
+        apiFailed: lastFailedQuestions.current.length ? lastFailedQuestions.current : undefined,
+      });
       return (
         <div className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 min-h-0 w-full">
           <div className="w-full max-w-none mx-auto">
@@ -511,8 +717,19 @@ export function CoursePlayer() {
                     emptyQuizContinueLabel="Continue to next step"
                     startLayout="split"
                     aiCoachingSessions={aiCoachingSummaries}
+                    coachingActions={prereqCoachingActions}
+                    returnToStartToken={quizReturnToken}
+                    quizFlagScope={{
+                      topicId: learntTopic.id,
+                      contextType: 'prereq',
+                      contextId: prereq.id,
+                    }}
                     onSubmit={async (score, total, answers) => {
                       const threshold = prereq.passingThreshold ?? 60;
+                      if (answers) {
+                        lastQuizAnswers.current = answers;
+                        lastQuizQuestions.current = prereq.questions ?? [];
+                      }
                       if (!answers || !learntTopic.id || !prereq.id) {
                         const pct = total > 0 ? (score / total) * 100 : 100;
                         setQuizResult({ passed: pct >= threshold });
@@ -524,6 +741,7 @@ export function CoursePlayer() {
                         topicId: learntTopic.id,
                         answers,
                       });
+                      lastQuizGrading.current = apiResult?.grading ?? null;
                       if (apiResult?.evaluationIncomplete) {
                         setQuizResult(null);
                         return apiResult.grading;
@@ -550,24 +768,37 @@ export function CoursePlayer() {
                         Continue <ChevronRight className="w-5 h-5" />
                       </button>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => setAiTeach({
-                          topicTitle: learntTopic.title,
-                          kind: 'prerequisite',
-                          topicId: learntTopic.id,
-                          contextId: prereq.id,
-                          failedQuestions: lastFailedQuestions.current.length > 0
-                            ? lastFailedQuestions.current : undefined,
-                          retakeQuestions: lastFailedQuestions.current.length === 0
-                            ? prereq.questions : undefined,
-                          onPassed: advancePrereq,
-                          onBack: () => { },
-                        })}
-                        className="w-full py-3 bg-indigo-600 text-white font-extrabold rounded-xl hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2 shadow-sm"
-                      >
-                        <Sparkles className="w-4 h-4" /> Get AI Help & Retake
-                      </button>
+                      <QuizCoachingFailFooter
+                        coachingAvailable={prereqFailCoaching.coachingAvailable}
+                        canStartAiRetake={prereqFailCoaching.canStartAiRetake}
+                        hasCompletedTutorSession={prereqFailCoaching.hasCompletedTutorSession}
+                        atCoachingCap={prereqFailCoaching.atCoachingCap}
+                        onStartTutor={() =>
+                          openAiTeach({
+                            topicTitle: learntTopic.title,
+                            kind: 'prerequisite',
+                            topicId: learntTopic.id,
+                            contextId: prereq.id,
+                            questions: prereq.questions ?? [],
+                            passingThreshold: prereq.passingThreshold ?? 60,
+                            entryIntent: 'coach',
+                            onPassed: advancePrereq,
+                          })
+                        }
+                        onStartAiRetake={() =>
+                          openAiTeach({
+                            topicTitle: learntTopic.title,
+                            kind: 'prerequisite',
+                            topicId: learntTopic.id,
+                            contextId: prereq.id,
+                            questions: prereq.questions ?? [],
+                            passingThreshold: prereq.passingThreshold ?? 60,
+                            entryIntent: 'retake',
+                            onPassed: advancePrereq,
+                          })
+                        }
+                        onDoLater={handleQuizDoLater}
+                      />
                     )}
                   </div>
                 )}
@@ -673,6 +904,33 @@ export function CoursePlayer() {
           })()
         : [];
 
+    const subtopicCoachingActions =
+      step.kind === 'quiz'
+        ? buildCoachingActionsForQuiz({
+            contextType: 'subtopic',
+            contextId: step.sub.id,
+            questions: step.questions,
+            kind: 'subtopic',
+            topicId: learntTopic.id,
+            subTopicId: step.sub.id,
+            subtopicTitle: step.sub.title,
+            passingThreshold: (step.sub as { passingThreshold?: number }).passingThreshold ?? 60,
+            onPassed: advanceSubStep,
+          })
+        : undefined;
+
+    const subtopicFailCoaching =
+      step.kind === 'quiz'
+        ? deriveQuizCoachingState({
+            contextType: 'subtopic',
+            contextId: step.sub.id,
+            questions: step.questions,
+            topicStatus: topicStatusForCoaching,
+            aiSessions: aiSessionsForCoaching,
+            apiFailed: lastFailedQuestions.current.length ? lastFailedQuestions.current : undefined,
+          })
+        : null;
+
     return (
       <div className="flex-1 flex flex-col overflow-hidden bg-slate-50 min-h-0">
         <div className="flex-1 flex flex-col w-full max-w-none mx-auto h-full min-h-0">
@@ -686,9 +944,25 @@ export function CoursePlayer() {
               }
               startLayout={step.kind === 'quiz' ? 'split' : 'default'}
               aiCoachingSessions={step.kind === 'quiz' ? aiCoachingSummaries : []}
+              coachingActions={subtopicCoachingActions}
+              returnToStartToken={quizReturnToken}
+              quizFlagScope={
+                step.kind === 'quiz'
+                  ? {
+                      topicId: learntTopic.id,
+                      contextType: 'subtopic',
+                      contextId: step.sub.id,
+                      subTopicId: step.sub.id,
+                    }
+                  : undefined
+              }
               onSubmit={async (score, total, answers) => {
                 const localPct = total > 0 ? (score / total) * 100 : 100;
                 const threshold = step.kind === 'quiz' ? (step.sub as { passingThreshold?: number }).passingThreshold ?? 60 : 60;
+                if (answers) {
+                  lastQuizAnswers.current = answers;
+                  lastQuizQuestions.current = step.questions;
+                }
                 if (answers && step.kind === 'quiz' && learntTopic.id && step.sub.id) {
                   const apiResult = await submitQuizToApi({
                     contextType: 'subtopic',
@@ -697,6 +971,7 @@ export function CoursePlayer() {
                     subTopicId: step.sub.id,
                     answers,
                   });
+                  lastQuizGrading.current = apiResult?.grading ?? null;
                   if (apiResult?.evaluationIncomplete) {
                     setQuizResult(null);
                     return apiResult.grading;
@@ -725,28 +1000,45 @@ export function CoursePlayer() {
                 >
                   Continue Journey <ChevronRight className="w-5 h-5" />
                 </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setAiTeach({
-                    topicTitle: learntTopic.title,
-                    subtopicTitle: step.kind === 'quiz' ? step.sub.title : undefined,
-                    kind: 'subtopic',
-                    topicId: learntTopic.id,
-                    subTopicId: step.kind === 'quiz' ? step.sub.id : undefined,
-                    contextId: step.kind === 'quiz' ? step.sub.id : undefined,
-                    failedQuestions: lastFailedQuestions.current.length > 0
-                      ? lastFailedQuestions.current : undefined,
-                    retakeQuestions: lastFailedQuestions.current.length === 0
-                      ? step.questions : undefined,
-                    onPassed: advanceSubStep,
-                    onBack: () => { },
-                  })}
-                  className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-indigo-500 to-indigo-700 text-white font-extrabold rounded-2xl transition-all flex items-center justify-center gap-3 shadow-md"
-                >
-                  <Sparkles className="w-5 h-5" /> Get AI Help & Retake
-                </button>
-              )}
+              ) : subtopicFailCoaching ? (
+                <QuizCoachingFailFooter
+                  coachingAvailable={subtopicFailCoaching.coachingAvailable}
+                  canStartAiRetake={subtopicFailCoaching.canStartAiRetake}
+                  hasCompletedTutorSession={subtopicFailCoaching.hasCompletedTutorSession}
+                  atCoachingCap={subtopicFailCoaching.atCoachingCap}
+                  onStartTutor={() => {
+                    if (step.kind !== 'quiz') return;
+                    openAiTeach({
+                      topicTitle: learntTopic.title,
+                      subtopicTitle: step.sub.title,
+                      kind: 'subtopic',
+                      topicId: learntTopic.id,
+                      subTopicId: step.sub.id,
+                      contextId: step.sub.id,
+                      questions: step.questions,
+                      passingThreshold: (step.sub as { passingThreshold?: number }).passingThreshold ?? 60,
+                      entryIntent: 'coach',
+                      onPassed: advanceSubStep,
+                    });
+                  }}
+                  onStartAiRetake={() => {
+                    if (step.kind !== 'quiz') return;
+                    openAiTeach({
+                      topicTitle: learntTopic.title,
+                      subtopicTitle: step.sub.title,
+                      kind: 'subtopic',
+                      topicId: learntTopic.id,
+                      subTopicId: step.sub.id,
+                      contextId: step.sub.id,
+                      questions: step.questions,
+                      passingThreshold: (step.sub as { passingThreshold?: number }).passingThreshold ?? 60,
+                      entryIntent: 'retake',
+                      onPassed: advanceSubStep,
+                    });
+                  }}
+                  onDoLater={handleQuizDoLater}
+                />
+              ) : null}
             </motion.div>
           )}
         </div>
@@ -763,6 +1055,7 @@ export function CoursePlayer() {
       learningPhase={phase}
       currentStage={currentStage}
       onSelectStage={applyLearningStage}
+      coachingHintIds={coachingHintIds}
     />
   );
 
@@ -951,7 +1244,7 @@ export function CoursePlayer() {
           <header className="shrink-0 px-4 py-3 bg-white border-b border-slate-200 flex items-center gap-3">
             <button
               type="button"
-              onClick={() => navigate('/courses')}
+              onClick={closeAiOverlay}
               className="p-2 rounded-xl text-slate-500 hover:bg-slate-100"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -960,7 +1253,7 @@ export function CoursePlayer() {
           </header>
           <div className="flex-1 overflow-y-auto min-h-0 w-full p-0">
             <div className="w-full max-w-none">
-              <AITeachingPanel
+              <VoiceClassroomPanel
                 topicTitle={aiTeach.topicTitle}
                 subtopicTitle={aiTeach.subtopicTitle}
                 kind={aiTeach.kind}
@@ -968,9 +1261,21 @@ export function CoursePlayer() {
                 subTopicId={aiTeach.subTopicId}
                 contextId={aiTeach.contextId}
                 failedQuestions={aiTeach.failedQuestions}
-                retakeQuestions={aiTeach.retakeQuestions}
-                onPassed={() => { setAiTeach(null); lastFailedQuestions.current = []; aiTeach.onPassed(); }}
-                onBack={() => { setAiTeach(null); aiTeach.onBack(); }}
+                passingThreshold={aiTeach.passingThreshold ?? 60}
+                entryIntent={aiTeach.entryIntent}
+                onPassed={() => {
+                  if (aiTeach.topicId && aiTeach.contextId) {
+                    clearVoiceSessionStart(
+                      aiTeach.topicId,
+                      aiTeach.contextId,
+                      aiTeach.kind === 'prerequisite' ? 'prereq' : 'subtopic'
+                    );
+                  }
+                  setAiTeach(null);
+                  lastFailedQuestions.current = [];
+                  aiTeach.onPassed();
+                }}
+                onBack={closeAiOverlay}
                 onRetakeRecorded={() => {
                   void refetchAiSessions();
                   void refetchTopicStatus();

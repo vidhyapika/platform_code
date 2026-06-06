@@ -7,11 +7,17 @@ import {
   History, RotateCcw, ChevronRight, Sparkles,
 } from 'lucide-react';
 import { MathRenderer } from './MathRenderer';
+import { studentAnswerToPreviewLatex } from '../utils/studentMathPreview';
+import { MathAnswerInput } from './MathAnswerInput';
 import { motion, AnimatePresence } from 'framer-motion';
 import { compressImagesToBase64 } from '../utils/imageCompress';
 import { parseAnswerImageUrls } from '../utils/quizAnswerDisplay';
 import { AiSessionRecallExplorer } from './AiSessionRecallExplorer';
 import type { AiCoachingSessionSummary } from '../types/aiCoachingSession';
+import { QuizCoachingHubCard, type QuizCoachingActionsConfig } from './QuizCoachingActions';
+import { FlagQuestionButton } from './FlagQuestionModal';
+import { useApiGet } from '../hooks/useApi';
+import type { QuestionFlag } from '../types/questionFlags';
 
 export { parseAnswerImageUrls };
 export type { AiCoachingSessionSummary };
@@ -48,6 +54,16 @@ export type QuizSubmitGradingResult = {
   serverPassed?: boolean;
   /** Server escalated the learner after max AI retake failures. */
   flagged?: boolean;
+  /** Firestore quiz attempt id when saved server-side. */
+  attemptId?: string;
+};
+
+export type QuizFlagScope = {
+  topicId: string;
+  contextType: 'prereq' | 'subtopic' | 'finaltest';
+  contextId: string;
+  subTopicId?: string;
+  quizAttemptId?: string;
 };
 
 function buildClientReviewGrading(questions: Question[], answers: Record<string, string>): QuizSubmitGradingResult {
@@ -90,6 +106,12 @@ interface InlineQuizProps {
    * Use with embedded retake flows (e.g. AI coaching) so the parent can change mode without unmounting review early.
    */
   onQuizFullyReviewed?: () => void;
+  /** When set, show tutor / retake actions on the quiz home hub. */
+  coachingActions?: QuizCoachingActionsConfig;
+  /** Increment to return the learner to the start screen (e.g. "Do this later"). */
+  returnToStartToken?: number;
+  /** When set, review screen shows "Flag question" for each item. */
+  quizFlagScope?: QuizFlagScope;
 }
 
 function formatAttemptDateLabel(dateStr: string): string {
@@ -246,6 +268,9 @@ export function InlineQuiz({
   startLayout = 'default',
   aiCoachingSessions = [],
   onQuizFullyReviewed,
+  coachingActions,
+  returnToStartToken = 0,
+  quizFlagScope,
 }: InlineQuizProps) {
   const [phase, setPhase] = useState<'start' | 'quiz' | 'review'>(isReviewMode ? 'review' : 'start');
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -260,6 +285,23 @@ export function InlineQuiz({
   const [reviewGrading, setReviewGrading] = useState<QuizSubmitGradingResult | null>(null);
   /** Split start screen: which tab is visible */
   const [splitStartTab, setSplitStartTab] = useState<'history' | 'coaching'>('history');
+  const { data: flagData, refetch: refetchFlags } = useApiGet<{ flags: QuestionFlag[] }>(
+    quizFlagScope ? '/api/student/question-flags' : '/api/healthz',
+    [quizFlagScope?.topicId, quizFlagScope?.contextId]
+  );
+  const studentFlags = quizFlagScope ? (flagData?.flags ?? []) : [];
+
+  const flagStatusForQuestion = (questionId: string, attemptId?: string) => {
+    const match = studentFlags.find((f) => {
+      if (f.questionId !== questionId) return false;
+      if (attemptId && f.quizAttemptId) return f.quizAttemptId === attemptId;
+      if (!attemptId && !f.quizAttemptId) {
+        return f.contextType === quizFlagScope?.contextType && f.contextId === quizFlagScope?.contextId;
+      }
+      return attemptId ? f.quizAttemptId === attemptId : false;
+    });
+    return match?.status ?? null;
+  };
 
   // Reset state when questions change
   useEffect(() => {
@@ -278,6 +320,16 @@ export function InlineQuiz({
   useEffect(() => {
     setSplitStartTab('history');
   }, [questions]);
+
+  useEffect(() => {
+    if (returnToStartToken > 0 && !isReviewMode) {
+      setPhase('start');
+      setCurrentQuestionIndex(0);
+      setReviewGrading(null);
+      setShowConfirm(false);
+      setSelectedPastAttemptIndex(null);
+    }
+  }, [returnToStartToken, isReviewMode]);
 
   if (!questions || questions.length === 0) {
     if (onEmptyQuizContinue) {
@@ -389,6 +441,7 @@ export function InlineQuiz({
           total: g.total,
           perQuestion: g.perQuestion,
           evaluationIncomplete: true,
+          ...(g.attemptId ? { attemptId: g.attemptId } : {}),
         });
         setPhase('review');
         return;
@@ -409,6 +462,7 @@ export function InlineQuiz({
           evaluationIncomplete: false,
           ...(typeof ext.serverPassed === 'boolean' ? { serverPassed: ext.serverPassed } : {}),
           ...(ext.flagged ? { flagged: true } : {}),
+          ...(ext.attemptId ? { attemptId: ext.attemptId } : {}),
         });
       } else {
         setReviewGrading(buildClientReviewGrading(questions, answers));
@@ -550,6 +604,10 @@ export function InlineQuiz({
             </button>
           </header>
 
+          {coachingActions && (coachingActions.coachingAvailable || coachingActions.atCoachingCap) ? (
+            <QuizCoachingHubCard {...coachingActions} />
+          ) : null}
+
           <nav
             className="shrink-0 flex w-full max-w-full border-b border-slate-200 bg-white"
             aria-label="Quiz history and coaching"
@@ -625,7 +683,9 @@ export function InlineQuiz({
                             <summary className="cursor-pointer list-none px-4 py-4 sm:px-5 flex flex-col sm:flex-row sm:items-center sm:justify-center gap-3 text-center sm:text-left [&::-webkit-details-marker]:hidden border-b border-indigo-50 bg-gradient-to-r from-indigo-50/90 to-violet-50/40">
                               <span className="text-sm font-bold text-slate-900">{s.createdAtLabel}</span>
                               <span className="text-[10px] font-extrabold uppercase tracking-wide text-indigo-900 bg-white px-3 py-1.5 rounded-full border border-indigo-100 shadow-sm mx-auto sm:mx-0">
-                                {s.mistakeCount} mistakes · {s.lessonCount} lessons · {s.drillCount} drills
+                                {s.voiceStatus === 'ended' && s.notes
+                                  ? 'Voice · notes saved'
+                                  : `${s.mistakeCount} mistakes · ${s.lessonCount} lessons · ${s.drillCount} drills`}
                               </span>
                             </summary>
                             <div className="p-3 sm:p-4 bg-slate-50/50">
@@ -819,6 +879,7 @@ export function InlineQuiz({
       typeof grading.serverPassed === 'boolean' ? grading.serverPassed : pct >= passingThresholdPercent;
     const usedAiGrading = Object.values(grading.perQuestion).some((v) => !!(v.aiReasoning?.trim()));
     const evalIncomplete = !!grading.evaluationIncomplete;
+    const reviewAttemptId = grading.attemptId ?? quizFlagScope?.quizAttemptId;
 
     const isQuestionCorrect = (q: Question) =>
       grading.perQuestion[q.id]?.evaluationFailed
@@ -935,6 +996,14 @@ export function InlineQuiz({
                         ) : (
                           <p className="text-slate-500 font-medium italic">No image uploaded</p>
                         )
+                      ) : q.type === 'text' ? (
+                        <div className={`font-bold break-words ${isCorrect ? 'text-emerald-700' : 'text-red-700'}`}>
+                          {answers[q.id] ? (
+                            <MathRenderer text={studentAnswerToPreviewLatex(answers[q.id])} block />
+                          ) : (
+                            <span className="italic text-slate-500">Skipped</span>
+                          )}
+                        </div>
                       ) : (
                         <p className={`font-bold whitespace-pre-wrap break-words ${isCorrect ? 'text-emerald-700' : 'text-red-700'}`}>{answers[q.id] || 'Skipped'}</p>
                       )}
@@ -950,7 +1019,7 @@ export function InlineQuiz({
                           </div>
                         ) : (
                           <div className="font-bold text-emerald-800">
-                            <MathRenderer text={q.correctAnswer} />
+                            <MathRenderer text={q.correctAnswer || '—'} />
                           </div>
                         )}
                       </div>
@@ -978,6 +1047,24 @@ export function InlineQuiz({
                       </div>
                     </div>
                   )}
+
+                  {quizFlagScope && !evalIncomplete ? (
+                    <div className="mt-4 pt-4 border-t border-slate-100 flex justify-end">
+                      <FlagQuestionButton
+                        context={{
+                          topicId: quizFlagScope.topicId,
+                          contextType: quizFlagScope.contextType,
+                          contextId: quizFlagScope.contextId,
+                          subTopicId: quizFlagScope.subTopicId,
+                          questionId: q.id,
+                          quizAttemptId: reviewAttemptId,
+                        }}
+                        disabled={!reviewAttemptId}
+                        existingStatus={flagStatusForQuestion(q.id, reviewAttemptId)}
+                        onFlagged={() => void refetchFlags()}
+                      />
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
@@ -995,7 +1082,7 @@ export function InlineQuiz({
                 onClick={() => onQuizFullyReviewed()}
                 className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-8 py-4 text-sm font-black text-white shadow-md transition-colors hover:bg-indigo-700"
               >
-                {passed ? 'Continue' : 'Back to AI Coach'}
+                {passed ? 'Continue' : 'Back to quiz home'}
                 <ChevronRight className="h-4 w-4" />
               </button>
             </div>
@@ -1138,12 +1225,9 @@ export function InlineQuiz({
                       })()}
                     </div>
                   ) : currentQuestion.type === 'text' ? (
-                    <textarea
-                      rows={6}
-                      placeholder="Type your answer here..."
+                    <MathAnswerInput
                       value={answers[currentQuestion.id] || ''}
-                      onChange={(e) => handleOptionSelect(e.target.value)}
-                      className="w-full p-4 border-2 border-slate-200 rounded-2xl resize-none focus:border-[#0084B4] focus:ring-4 focus:ring-[#0084B4]/10 transition-all outline-none font-medium text-slate-700 placeholder:text-slate-400"
+                      onChange={handleOptionSelect}
                     />
                   ) : (
                     <div className="grid grid-cols-1 gap-3">

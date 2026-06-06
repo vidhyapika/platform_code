@@ -5,32 +5,51 @@ import {
   GraduationCap,
   Dumbbell,
   MessageCircle,
+  FileText,
+  Mic,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
+  Presentation,
 } from 'lucide-react';
 import { MathRenderer, LatexBlock } from './MathRenderer';
 import { MarkdownLesson } from './MarkdownLesson';
+import { WhiteboardReplay } from './voice/classroom/whiteboard/WhiteboardReplay';
+import './voice/styles/wb-artifacts.css';
 import type { AiCoachingSessionSummary } from '../types/aiCoachingSession';
 
-type RecallTab = 'overview' | 'diagnose' | 'learn' | 'practice' | 'chat';
+type RecallTab = 'overview' | 'notes' | 'voice' | 'board' | 'diagnose' | 'learn' | 'practice' | 'chat';
 
 export function AiSessionRecallExplorer({ session }: { session: AiCoachingSessionSummary }) {
   const mistakes = session.mistakes ?? [];
   const lessons = session.lessonCards ?? [];
   const drills = session.drills ?? [];
   const messages = session.messages ?? [];
+  const transcript = session.transcript ?? [];
+  const whiteboardLog = session.whiteboardLog ?? [];
+  const hasNotes = !!(session.notes?.trim() || session.assignment?.trim());
+  const showVoiceTab = transcript.length > 0;
+  const showBoardTab = whiteboardLog.length > 0;
 
   const hasDetail =
-    mistakes.length > 0 || lessons.length > 0 || drills.length > 0 || messages.length > 0;
+    mistakes.length > 0 ||
+    lessons.length > 0 ||
+    drills.length > 0 ||
+    messages.length > 0 ||
+    transcript.length > 0 ||
+    whiteboardLog.length > 0 ||
+    !!(session.notes || session.assignment);
 
   const defaultTab = useMemo((): RecallTab => {
+    if (hasNotes) return 'notes';
     if (mistakes.length) return 'diagnose';
     if (lessons.length) return 'learn';
     if (drills.length) return 'practice';
+    if (showVoiceTab) return 'voice';
+    if (showBoardTab) return 'board';
     if (messages.length) return 'chat';
     return 'overview';
-  }, [mistakes.length, lessons.length, drills.length, messages.length]);
+  }, [hasNotes, mistakes.length, lessons.length, drills.length, showVoiceTab, showBoardTab, messages.length]);
 
   const [tab, setTab] = useState<RecallTab>(defaultTab);
   const [mi, setMi] = useState(0);
@@ -55,6 +74,15 @@ export function AiSessionRecallExplorer({ session }: { session: AiCoachingSessio
 
   const tabs: { id: RecallTab; label: string; Icon: typeof Crosshair; count?: number; tint: string }[] = [
     { id: 'overview', label: 'Map', Icon: LayoutDashboard, tint: 'slate' },
+    ...(hasNotes
+      ? [{ id: 'notes' as const, label: 'Notes', Icon: FileText, count: 1, tint: 'sky' }]
+      : []),
+    ...(showVoiceTab
+      ? [{ id: 'voice' as const, label: 'Voice', Icon: Mic, count: transcript.length, tint: 'cyan' }]
+      : []),
+    ...(showBoardTab
+      ? [{ id: 'board' as const, label: 'Board', Icon: Presentation, count: whiteboardLog.length, tint: 'teal' }]
+      : []),
     {
       id: 'diagnose',
       label: 'Diagnose',
@@ -82,7 +110,11 @@ export function AiSessionRecallExplorer({ session }: { session: AiCoachingSessio
           {tabs.map(({ id, label, Icon, count, tint }) => {
             const active = tab === id;
             const showCount =
-              id !== 'overview' && count !== undefined && count > 0 && id !== 'chat' ? count : id === 'chat' && count ? count : null;
+              id !== 'overview' && count !== undefined && count > 0
+                ? id === 'notes'
+                  ? null
+                  : count
+                : null;
             return (
               <button
                 key={id}
@@ -98,7 +130,13 @@ export function AiSessionRecallExplorer({ session }: { session: AiCoachingSessio
                           ? 'bg-emerald-100 text-emerald-950 ring-2 ring-emerald-300/60 shadow-sm'
                           : tint === 'violet'
                             ? 'bg-violet-100 text-violet-950 ring-2 ring-violet-300/60 shadow-sm'
-                            : 'bg-slate-900 text-white ring-2 ring-slate-700 shadow-sm'
+                            : tint === 'sky'
+                              ? 'bg-sky-100 text-sky-950 ring-2 ring-sky-300/60 shadow-sm'
+                              : tint === 'cyan'
+                                ? 'bg-cyan-100 text-cyan-950 ring-2 ring-cyan-300/60 shadow-sm'
+                                : tint === 'teal'
+                                  ? 'bg-teal-100 text-teal-950 ring-2 ring-teal-300/60 shadow-sm'
+                                  : 'bg-slate-900 text-white ring-2 ring-slate-700 shadow-sm'
                     : 'bg-slate-50/90 text-slate-600 hover:bg-slate-100 border border-transparent hover:border-slate-200'
                 }`}
               >
@@ -120,6 +158,9 @@ export function AiSessionRecallExplorer({ session }: { session: AiCoachingSessio
             <div>
               <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-indigo-700">
                 {tab === 'overview' && 'Session map'}
+                {tab === 'notes' && 'Study notes'}
+                {tab === 'voice' && 'Voice transcript'}
+                {tab === 'board' && 'Lesson board'}
                 {tab === 'diagnose' && 'Step 1 · Diagnose'}
                 {tab === 'learn' && 'Step 2 · Learn'}
                 {tab === 'practice' && 'Step 3 · Practice'}
@@ -127,6 +168,9 @@ export function AiSessionRecallExplorer({ session }: { session: AiCoachingSessio
               </p>
               <p className="text-xs font-semibold text-slate-600 mt-0.5">
                 {tab === 'overview' && 'Pick a lane above — each tab holds one kind of content only.'}
+                {tab === 'notes' && 'Saved notes and homework from your voice class.'}
+                {tab === 'voice' && 'What you and your tutor said during the live session.'}
+                {tab === 'board' && 'Everything your tutor wrote on the board during the live class.'}
                 {tab === 'diagnose' && 'One mistake at a time — expand sections inside each card.'}
                 {tab === 'learn' && 'Flip lesson cards like a deck — full markdown & formulas preserved.'}
                 {tab === 'practice' && 'One drill per screen — reveal hint / check / solution on purpose.'}
@@ -168,6 +212,28 @@ export function AiSessionRecallExplorer({ session }: { session: AiCoachingSessio
                   <p className="mt-2 text-2xl font-black text-slate-900">{drills.length}</p>
                   <p className="mt-1 text-xs text-emerald-900/90 font-medium">Micro-drills · tap to open</p>
                 </button>
+                {hasNotes ? (
+                  <button
+                    type="button"
+                    onClick={() => setTab('notes')}
+                    className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-blue-50/40 p-4 text-left shadow-sm transition hover:shadow-md"
+                  >
+                    <p className="text-[10px] font-extrabold uppercase tracking-widest text-sky-900">Notes</p>
+                    <p className="mt-2 text-2xl font-black text-slate-900">Saved</p>
+                    <p className="mt-1 text-xs text-sky-900/90 font-medium">Study notes & homework</p>
+                  </button>
+                ) : null}
+                {showVoiceTab ? (
+                  <button
+                    type="button"
+                    onClick={() => setTab('voice')}
+                    className="rounded-2xl border border-cyan-200 bg-gradient-to-br from-cyan-50 to-teal-50/40 p-4 text-left shadow-sm transition hover:shadow-md"
+                  >
+                    <p className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-900">Voice</p>
+                    <p className="mt-2 text-2xl font-black text-slate-900">{transcript.length}</p>
+                    <p className="mt-1 text-xs text-cyan-900/90 font-medium">Transcript lines</p>
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => setTab('chat')}
@@ -179,6 +245,53 @@ export function AiSessionRecallExplorer({ session }: { session: AiCoachingSessio
                   <p className="mt-1 text-xs text-violet-900/90 font-medium">Messages · tap to open</p>
                 </button>
               </div>
+            )}
+
+            {tab === 'notes' && (
+              <div className="space-y-6 max-w-3xl mx-auto">
+                {session.notes?.trim() ? (
+                  <section>
+                    <h3 className="text-sm font-extrabold text-[#0084B4] uppercase mb-3">Study notes</h3>
+                    <div className="rounded-2xl border border-sky-100 bg-white p-4 sm:p-5 shadow-sm">
+                      <MarkdownLesson content={session.notes} />
+                    </div>
+                  </section>
+                ) : (
+                  <p className="text-sm text-slate-500">No study notes saved for this session.</p>
+                )}
+                {session.assignment?.trim() ? (
+                  <section>
+                    <h3 className="text-sm font-extrabold text-[#0084B4] uppercase mb-3">Homework</h3>
+                    <div className="rounded-2xl border border-indigo-100 bg-white p-4 sm:p-5 shadow-sm">
+                      <MarkdownLesson content={session.assignment} />
+                    </div>
+                  </section>
+                ) : null}
+              </div>
+            )}
+
+            {tab === 'voice' && showVoiceTab && (
+              <ul className="space-y-3 max-w-3xl mx-auto">
+                {transcript.map((line, ti) => (
+                  <li
+                    key={`${session.id}-tr-${ti}`}
+                    className={`rounded-2xl px-4 py-3 text-sm shadow-sm border ${
+                      line.role === 'student'
+                        ? 'bg-blue-600 text-white border-blue-700 ml-8'
+                        : 'bg-indigo-50 text-slate-800 border-indigo-100 mr-8'
+                    }`}
+                  >
+                    <span className="text-[10px] font-extrabold uppercase opacity-80 block mb-1.5">
+                      {line.role === 'student' ? 'You' : 'Tutor'}
+                    </span>
+                    <MathRenderer text={line.text} />
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {tab === 'board' && showBoardTab && (
+              <WhiteboardReplay log={whiteboardLog} />
             )}
 
             {tab === 'diagnose' && mistakes.length > 0 && activeMistake && (
@@ -396,6 +509,9 @@ export function AiSessionRecallExplorer({ session }: { session: AiCoachingSessio
             ) : null}
             {tab === 'chat' && messages.length === 0 ? (
               <p className="text-sm text-slate-500">No chat messages stored for this session.</p>
+            ) : null}
+            {tab === 'voice' && !showVoiceTab ? (
+              <p className="text-sm text-slate-500">No voice transcript stored for this session.</p>
             ) : null}
           </div>
         </div>

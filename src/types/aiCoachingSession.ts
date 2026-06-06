@@ -22,4 +22,9 @@ export type AiCoachingSessionSummary = {
     solution: string;
   }>;
   messages?: Array<{ role: 'tutor' | 'student'; content: string; timestamp: number }>;
+  transcript?: Array<{ role: string; text: string; ts: number }>;
+  notes?: string;
+  assignment?: string;
+  voiceStatus?: 'active' | 'ended';
+  whiteboardLog?: Record<string, unknown>[];
 };

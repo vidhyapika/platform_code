@@ -58,7 +58,7 @@ export type AISessionRecord = {
   contextId?: string | null;
   subTopicId?: string | null;
   contextType: "prereq" | "subtopic" | "finaltest";
-  messages: { role: "tutor" | "student"; content: string; timestamp: number }[];
+  messages?: { role: "tutor" | "student"; content: string; timestamp: number }[];
   lessonCards?: { title: string; content: string; latex?: string }[];
   mistakes?: {
     questionId: string;
@@ -74,8 +74,26 @@ export type AISessionRecord = {
     checkYourself: string;
     solution: string;
   }[];
+  failedQuestionsSnapshot?: {
+    questionId: string;
+    text: string;
+    type?: string;
+    studentAnswer?: string;
+    correctAnswer?: string;
+    aiReasoning?: string;
+  }[];
   generatedQuizIds?: string[];
   status: "active" | "completed";
+  roomName?: string;
+  livekitUrl?: string;
+  voiceStatus?: "active" | "ended";
+  bootstrapStatus?: "pending" | "ready" | "failed";
+  /** Set when student LiveKit connect recorded (AI attempt counters incremented). */
+  attemptRecorded?: boolean;
+  transcript?: { role: string; text: string; ts: number }[];
+  notes?: string;
+  assignment?: string;
+  whiteboardLog?: object[];
   createdAt?: FirebaseFirestore.Timestamp;
   updatedAt?: FirebaseFirestore.Timestamp;
 };
@@ -225,6 +243,19 @@ export async function saveQuizAttempt(
   return ref.id;
 }
 
+export async function getQuizAttempt(id: string): Promise<QuizAttemptRecord | null> {
+  const doc = await getDb().collection("quizAttempts").doc(id).get();
+  if (!doc.exists) return null;
+  return { id: doc.id, ...doc.data() } as QuizAttemptRecord;
+}
+
+export async function updateQuizAttempt(
+  id: string,
+  data: Partial<Pick<QuizAttemptRecord, "answers" | "score" | "total" | "passed">>
+): Promise<void> {
+  await getDb().collection("quizAttempts").doc(id).update(data);
+}
+
 export async function listQuizAttempts(
   studentId: string,
   contextType?: string,
@@ -273,6 +304,17 @@ export async function createAISession(
 export async function getAISession(id: string): Promise<AISessionRecord | null> {
   const doc = await getDb().collection("aiSessions").doc(id).get();
   if (!doc.exists) return null;
+  return { id: doc.id, ...doc.data() } as AISessionRecord;
+}
+
+export async function getAISessionByRoomName(roomName: string): Promise<AISessionRecord | null> {
+  const snap = await getDb()
+    .collection("aiSessions")
+    .where("roomName", "==", roomName)
+    .limit(1)
+    .get();
+  if (snap.empty) return null;
+  const doc = snap.docs[0];
   return { id: doc.id, ...doc.data() } as AISessionRecord;
 }
 

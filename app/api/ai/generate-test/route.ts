@@ -1,6 +1,10 @@
 import { verifyJWT, requireAuth } from "../../../../backend/middleware/auth";
 import { generateRetakeQuestions } from "../../../../backend/services/ai";
-import { getTopic, getSubTopic, getPrerequisite, listQuestions } from "../../../../backend/repositories/curriculumRepo";
+import {
+  getTopic,
+  getSubTopic,
+  listQuestionsForStudent,
+} from "../../../../backend/repositories/curriculumRepo";
 import { countFailedAiRetakes } from "../../../../backend/repositories/progressRepo";
 import { z } from "zod";
 
@@ -55,6 +59,7 @@ export async function POST(req: Request) {
     if (!topic) return Response.json({ error: "Topic not found" }, { status: 404 });
 
     const questionIds = await generateRetakeQuestions({
+      studentId,
       topicName: topic.name,
       subTopicName: subTopic?.name,
       failedQuestions,
@@ -63,18 +68,12 @@ export async function POST(req: Request) {
       contextId,
     });
 
-    // Fetch the generated questions to return them
-    const questions = await Promise.all(
-      questionIds.map((id) =>
-        listQuestions(contextType, contextId).then((qs) => qs.find((q) => q.id === id) ?? null)
-      )
-    );
+    const catalog = await listQuestionsForStudent(contextType, contextId, studentId);
+    const adminQs = catalog.filter((q) => !q.isAIGenerated);
+    const studentAiQs = catalog.filter((q) => q.isAIGenerated);
+    const questions = [...adminQs, ...studentAiQs];
 
-    const allGenerated = await listQuestions(contextType, contextId).then((qs) =>
-      qs.filter((q) => q.isAIGenerated)
-    );
-
-    return Response.json({ questionIds, questions: allGenerated });
+    return Response.json({ questionIds, questions });
   } catch (e: any) {
     if (e?.name === "ZodError") return Response.json({ error: "Validation error", details: e.issues }, { status: 400 });
     return Response.json({ error: e.message }, { status: 500 });

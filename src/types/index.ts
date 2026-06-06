@@ -95,9 +95,9 @@ export interface Badge {
 export interface Question {
   id: string;
   text: string;
-  type: 'text' | 'mcq' | 'boolean' | 'image_upload';
+  type: 'text' | 'mcq' | 'boolean' | 'true_false' | 'image_upload';
   options?: string[];
-  correctAnswer: string;
+  correctAnswer?: string;
   explanation: string;
   difficulty: 'Easy' | 'Medium' | 'Hard';
   imageUrl?: string;

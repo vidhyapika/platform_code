@@ -21,6 +21,7 @@ function RowButton({
   icon: Icon,
   indent,
   onClick,
+  badge,
 }: {
   label: string;
   selected: boolean;
@@ -29,6 +30,7 @@ function RowButton({
   icon: React.ComponentType<{ className?: string }>;
   indent: boolean;
   onClick: () => void;
+  badge?: string;
 }) {
   return (
     <button
@@ -51,7 +53,12 @@ function RowButton({
         <Circle className="w-4 h-4 shrink-0 mt-0.5 text-slate-300" />
       )}
       <Icon className={`w-4 h-4 shrink-0 mt-0.5 ${selected ? 'text-[#0084B4]' : 'text-slate-500'}`} />
-      <span className="leading-snug min-w-0">{label}</span>
+      <span className="leading-snug min-w-0 flex-1">{label}</span>
+      {badge ? (
+        <span className="shrink-0 text-[9px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800">
+          {badge}
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -64,6 +71,7 @@ export function TopicLearningOutline({
   learningPhase,
   currentStage,
   onSelectStage,
+  coachingHintIds,
 }: {
   topic: StudentTopicProgress;
   prereqs: Prerequisite[];
@@ -72,6 +80,7 @@ export function TopicLearningOutline({
   learningPhase: Phase;
   currentStage: LearningStage;
   onSelectStage: (s: LearningStage) => void;
+  coachingHintIds?: { prereqIds: string[]; subTopicIds: string[] };
 }) {
   const cleared = prereqCleared(topic, prereqs);
 
@@ -142,6 +151,7 @@ export function TopicLearningOutline({
                   locked={isStageLocked(st, topic, subSteps, prereqs, hasFinalTest)}
                   icon={Network}
                   indent={false}
+                  badge={coachingHintIds?.prereqIds.includes(p.id) ? 'AI help' : undefined}
                   onClick={() => onSelectStage(st)}
                 />
               );
@@ -203,6 +213,7 @@ export function TopicLearningOutline({
                       )}
                       icon={HelpCircle}
                       indent
+                      badge={coachingHintIds?.subTopicIds.includes(sub.id) ? 'AI help' : undefined}
                       onClick={() =>
                         onSelectStage({ kind: 'subtopic', subTopicId: sub.id, part: 'quiz' })
                       }

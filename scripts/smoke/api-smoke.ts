@@ -379,26 +379,32 @@ async function main() {
     fn: async () => {
       if (!process.env.GEMINI_API_KEY) return;
       const h = authHeader(ctx.studentToken!);
-      const teach = await httpJson(`${baseUrl}/api/ai/teach`, {
-        method: "POST",
-        headers: h,
-        body: JSON.stringify({
-          topicId: ctx.ids.topicId,
-          subTopicId: ctx.ids.subTopicId,
-          contextType: "subtopic",
-          failedQuestions: [],
-        }),
-      });
-      must(teach.status, 200, "POST /api/ai/teach", teach.data);
-      const sessionId = (teach.data as any)?.sessionId;
-      if (!sessionId) throw new Error("No sessionId from /api/ai/teach");
-
-      const chat = await httpJson(`${baseUrl}/api/ai/chat`, {
-        method: "POST",
-        headers: h,
-        body: JSON.stringify({ sessionId, message: "hello" }),
-      });
-      must(chat.status, 200, "POST /api/ai/chat", chat.data);
+      if (
+        process.env.LIVEKIT_URL &&
+        process.env.LIVEKIT_API_KEY &&
+        process.env.LIVEKIT_API_SECRET
+      ) {
+        const voice = await httpJson(`${baseUrl}/api/voice/session/create`, {
+          method: "POST",
+          headers: h,
+          body: JSON.stringify({
+            topicId: ctx.ids.topicId,
+            subTopicId: ctx.ids.subTopicId,
+            contextType: "subtopic",
+            failedQuestions: [
+              {
+                questionId: "smoke-q1",
+                text: "What is 2+2?",
+                studentAnswer: "5",
+                correctAnswer: "4",
+              },
+            ],
+          }),
+        });
+        must(voice.status, 200, "POST /api/voice/session/create", voice.data);
+        const sessionId = (voice.data as any)?.sessionId;
+        if (!sessionId) throw new Error("No sessionId from voice session create");
+      }
 
       const gen = await httpJson(`${baseUrl}/api/ai/generate-test`, {
         method: "POST",

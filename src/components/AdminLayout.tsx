@@ -14,18 +14,27 @@ import {
   Search,
   ShieldAlert,
   BarChart3,
+  MessageSquare,
+  Mic,
+  Flag,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useApiGet } from '../hooks/useApi';
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const location = useLocation();
+  const { data: messagesUnread } = useApiGet<{ unreadCount: number }>('/api/admin/messages/unread-count', []);
+  const { data: openFlags } = useApiGet<{ count: number }>('/api/admin/question-flags?countOnly=1', []);
 
   const navigation = [
     { name: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
     { name: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
     { name: 'Math Curriculum', href: '/admin/curriculum', icon: Calculator },
     { name: 'Students', href: '/admin/students', icon: Users },
+    { name: 'Query Resolution', href: '/admin/query-resolution', icon: Flag },
+    { name: 'Messages', href: '/admin/messages', icon: MessageSquare },
+    { name: 'Voice Lab', href: '/admin/voice-lab', icon: Mic },
     { name: 'Assignments', href: '/admin/assignments', icon: ClipboardList },
     { name: 'Schedule', href: '/admin/schedule', icon: CalendarIcon },
   ];
@@ -79,7 +88,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
                   key={item.name}
                   to={item.href}
                   className={`
-                    group flex items-center px-4 py-3 text-sm font-semibold rounded-xl transition-all
+                    group flex items-center gap-1 px-4 py-3 text-sm font-semibold rounded-xl transition-all
                     ${isActive 
                       ? 'bg-blue-600 text-white shadow-md' 
                       : 'text-slate-400 hover:bg-slate-800 hover:text-white'}
@@ -92,7 +101,17 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
                     `}
                     aria-hidden="true"
                   />
-                  {item.name}
+                  <span className="flex-1">{item.name}</span>
+                  {item.href === '/admin/messages' && (messagesUnread?.unreadCount ?? 0) > 0 && (
+                    <span className="min-w-[1.25rem] h-5 px-1 rounded-full bg-blue-400 text-white text-[10px] font-bold flex items-center justify-center">
+                      {(messagesUnread?.unreadCount ?? 0) > 9 ? '9+' : messagesUnread?.unreadCount}
+                    </span>
+                  )}
+                  {item.href === '/admin/query-resolution' && (openFlags?.count ?? 0) > 0 && (
+                    <span className="min-w-[1.25rem] h-5 px-1 rounded-full bg-amber-400 text-white text-[10px] font-bold flex items-center justify-center">
+                      {(openFlags?.count ?? 0) > 9 ? '9+' : openFlags?.count}
+                    </span>
+                  )}
                 </Link>
               );
             })}

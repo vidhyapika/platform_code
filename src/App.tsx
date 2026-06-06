@@ -16,6 +16,7 @@ import { Assignments } from './screens/Assignments';
 import { Schedule } from './screens/Schedule';
 import { Achievements } from './screens/Achievements';
 import { Settings } from './screens/Settings';
+import { Messages } from './screens/Messages';
 import { DemoPortal } from './screens/DemoPortal';
 
 // Admin Pages
@@ -28,6 +29,9 @@ import { AdminCurriculum } from './screens/admin/AdminCurriculum';
 import { AdminStudents } from './screens/admin/AdminStudents';
 import { AdminAssignments } from './screens/admin/AdminAssignments';
 import { AdminSchedule } from './screens/admin/AdminSchedule';
+import { AdminMessages } from './screens/admin/AdminMessages';
+import { AdminVoiceLab } from './screens/admin/AdminVoiceLab';
+import { AdminQueryResolution } from './screens/admin/AdminQueryResolution';
 
 // Parent Pages
 import { ParentLogin } from './screens/parent/ParentLogin';
@@ -49,6 +53,13 @@ function ParentRoute({ children }: { children: React.ReactNode }) {
   if (!token || user?.role !== 'parent') {
     return <Navigate to="/parent/login" replace />;
   }
+  return <>{children}</>;
+}
+
+function StudentRoute({ children }: { children: React.ReactNode }) {
+  const { token, user, ready } = useAuth();
+  if (!ready) return <div className="min-h-screen bg-slate-50" />;
+  if (!token || user?.role !== 'student') return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 
@@ -81,6 +92,7 @@ export default function App() {
         <Route path="/schedule" element={<EnrollmentRoute><Schedule /></EnrollmentRoute>} />
         <Route path="/achievements" element={<EnrollmentRoute><Achievements /></EnrollmentRoute>} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/messages" element={<StudentRoute><Messages /></StudentRoute>} />
         
         {/* Admin Routes */}
         <Route path="/admin" element={<Navigate to="/admin/login" replace />} />
@@ -91,8 +103,11 @@ export default function App() {
         <Route path="/admin/courses" element={<AdminRoute><AdminCourses /></AdminRoute>} />
         <Route path="/admin/curriculum" element={<AdminRoute><AdminCurriculum /></AdminRoute>} />
         <Route path="/admin/students" element={<AdminRoute><AdminStudents /></AdminRoute>} />
+        <Route path="/admin/query-resolution" element={<AdminRoute><AdminQueryResolution /></AdminRoute>} />
         <Route path="/admin/assignments" element={<AdminRoute><AdminAssignments /></AdminRoute>} />
         <Route path="/admin/schedule" element={<AdminRoute><AdminSchedule /></AdminRoute>} />
+        <Route path="/admin/messages" element={<AdminRoute><AdminMessages /></AdminRoute>} />
+        <Route path="/admin/voice-lab" element={<AdminRoute><AdminVoiceLab /></AdminRoute>} />
 
         {/* Parent Routes */}
         <Route path="/parent" element={<Navigate to="/parent/login" replace />} />

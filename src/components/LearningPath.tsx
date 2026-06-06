@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
-  CheckCircle2, Lock, PlayCircle, BookOpen, Network,
+  CheckCircle2, PlayCircle, BookOpen, Network,
   HelpCircle, Video, Brain, ChevronRight, Bot
 } from 'lucide-react';
 import type { StudentTopicProgress } from '../types';
@@ -26,11 +26,15 @@ const CATEGORY_COLORS = {
 export function LearningPath({ topics, onTopicClick }: LearningPathProps) {
   const navigate = useNavigate();
 
+  const handleTopicClick = (topic: StudentTopicProgress, idx: number) => {
+    if (onTopicClick) onTopicClick(topic, idx);
+    else navigate('/learn', { state: { topicIdx: idx } });
+  };
+
   return (
     <div className="relative">
       {topics.map((topic, idx) => {
         const colors = STATUS_COLORS[topic.status];
-        const isLocked = idx > 0 && topics[idx - 1].status === 'not-started';
         const videoCount = topic.subTopics.filter(s => s.videoUrl).length;
         const quizCount = topic.subTopics.reduce((n, s) => n + (s.quizzes?.length ?? 0), 0);
         const prereqCount = topic.prerequisites?.length ?? 0;
@@ -53,7 +57,7 @@ export function LearningPath({ topics, onTopicClick }: LearningPathProps) {
               initial={{ opacity: 0, x: -16 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: idx * 0.08, duration: 0.4 }}
-              className={`relative flex gap-4 mb-8 ${isLocked ? 'opacity-50' : ''}`}
+              className="relative flex gap-4 mb-8"
             >
               {/* Sequence circle */}
               <div className="flex-shrink-0 z-10">
@@ -71,23 +75,15 @@ export function LearningPath({ topics, onTopicClick }: LearningPathProps) {
                   </motion.div>
                 ) : (
                   <div className="w-14 h-14 rounded-full bg-slate-200 border-2 border-slate-300 flex items-center justify-center">
-                    {isLocked
-                      ? <Lock className="w-6 h-6 text-slate-400" />
-                      : <span className="text-slate-500 font-bold text-lg">{idx + 1}</span>
-                    }
+                    <span className="text-slate-500 font-bold text-lg">{idx + 1}</span>
                   </div>
                 )}
               </div>
 
               {/* Card */}
               <div
-                className={`flex-1 rounded-2xl border-2 ${colors.bg} ${colors.border} p-5 shadow-sm hover:shadow-md transition-shadow ${isLocked ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-                onClick={() => {
-                  if (!isLocked) {
-                    if (onTopicClick) onTopicClick(topic, idx);
-                    else navigate('/learn', { state: { topicIdx: idx } });
-                  }
-                }}
+                className={`flex-1 rounded-2xl border-2 ${colors.bg} ${colors.border} p-5 shadow-sm hover:shadow-md transition-shadow cursor-pointer`}
+                onClick={() => handleTopicClick(topic, idx)}
               >
                 {/* Header row */}
                 <div className="flex items-start justify-between gap-3 mb-3">
@@ -110,13 +106,11 @@ export function LearningPath({ topics, onTopicClick }: LearningPathProps) {
                   </div>
 
                   {/* CTA button */}
-                  {!isLocked && (
-                    <button
-                      onClick={e => { 
-                        e.stopPropagation(); 
-                        if (onTopicClick) onTopicClick(topic, idx);
-                        else navigate('/learn', { state: { topicIdx: idx } });
-                      }}
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      handleTopicClick(topic, idx);
+                    }}
                       className={`flex-shrink-0 flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-xl transition-colors ${
                         topic.status === 'completed'   ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' :
                         topic.status === 'in-progress' ? 'bg-blue-500 text-white hover:bg-blue-600 shadow-sm' :
@@ -129,7 +123,6 @@ export function LearningPath({ topics, onTopicClick }: LearningPathProps) {
                       }
                       {topic.status !== 'completed' && <ChevronRight className="w-3.5 h-3.5" />}
                     </button>
-                  )}
                 </div>
 
                 {/* Progress bar */}

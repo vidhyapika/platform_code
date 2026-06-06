@@ -24,6 +24,14 @@ const EnvSchema = z.object({
   // AI (server-side only)
   GEMINI_API_KEY: z.string().optional(),
 
+  // LiveKit voice tutor
+  LIVEKIT_URL: z.string().url().optional(),
+  LIVEKIT_API_KEY: z.string().optional(),
+  LIVEKIT_API_SECRET: z.string().optional(),
+  VOICE_AGENT_SERVICE_SECRET: z.string().min(16).optional(),
+  DEEPGRAM_API_KEY: z.string().optional(),
+  HF_TOKEN: z.string().optional(),
+
   // Admin
   ADMIN_EMAIL: z.string().email().optional(),
   ADMIN_LOGIN_EMAIL: z.string().email().optional(),

@@ -12,7 +12,8 @@ import {
   HelpCircle,
   Menu,
   X,
-  Search
+  Search,
+  MessageSquare,
 } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import { motion, AnimatePresence } from 'motion/react';
@@ -24,6 +25,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { data: curriculumData } = useApiGet<{ curriculums: any[] }>('/api/student/curriculum', []);
   const { data: notificationsSummary } = useApiGet<{ unreadCount: number }>('/api/student/notifications/summary', []);
+  const { data: messagesUnread } = useApiGet<{ unreadCount: number }>('/api/student/messages/unread-count', []);
   const notEnrolled = curriculumData && (!curriculumData.curriculums || curriculumData.curriculums.length === 0);
   const { user } = useAuth();
 
@@ -31,6 +33,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'My Curriculum', href: '/courses', icon: BookOpen },
     { name: 'Assignments', href: '/assignments', icon: ClipboardList },
+    { name: 'Messages', href: '/messages', icon: MessageSquare },
     { name: 'Schedule', href: '/schedule', icon: CalendarIcon },
     { name: 'Achievements', href: '/achievements', icon: Award },
   ];
@@ -74,8 +77,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           <nav className="space-y-1.5">
             {navigation.map((item) => {
               const isActive = location.pathname === item.href;
-              const isLearningLink = item.href !== '/dashboard';
+              const isLearningLink = item.href !== '/dashboard' && item.href !== '/messages';
               const disabled = notEnrolled && isLearningLink;
+              const messageUnread = item.href === '/messages' ? (messagesUnread?.unreadCount ?? 0) : 0;
               return (
                 <Link
                   key={item.name}
@@ -100,6 +104,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                     <div>{item.name}</div>
                     {disabled && <div className="text-[10px] font-bold text-slate-400 mt-0.5">Assign class to unlock</div>}
                   </div>
+                  {messageUnread > 0 && (
+                    <span className="shrink-0 min-w-[1.25rem] h-5 px-1 rounded-full bg-[#0084B4] text-white text-[10px] font-bold flex items-center justify-center">
+                      {messageUnread > 9 ? '9+' : messageUnread}
+                    </span>
+                  )}
                 </Link>
               );
             })}

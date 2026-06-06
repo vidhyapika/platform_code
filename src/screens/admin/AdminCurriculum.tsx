@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AdminLayout } from '../../components/AdminLayout';
 import { Modal } from '../../components/ui/Modal';
 import { LevelImportPanel } from '../../components/LevelImportPanel';
@@ -299,6 +300,9 @@ const QTYPE_LABELS: Record<string, string> = {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function AdminCurriculum() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deeplinkHandled = useRef(false);
+
   // ── Navigation ──────────────────────────────────────────────────────────────
   const [view, setView] = useState<ViewLevel>('standards');
   const [selection, setSelection] = useState({ standardId: '', classId: '', topicId: '', subtopicId: '' });
@@ -452,6 +456,73 @@ export function AdminCurriculum() {
   };
 
   const closeModal = () => { setModal({ isOpen: false, type: '', payload: null }); setSaveError(null); };
+
+  const pendingQuestionDeeplink = useRef<{
+    questionId: string;
+    contextType: string;
+    contextId: string;
+  } | null>(null);
+
+  // Deep-link from Query Resolution: ?topicId=&contextType=&contextId=&questionId=
+  useEffect(() => {
+    const questionId = searchParams.get('questionId');
+    const contextType = searchParams.get('contextType');
+    const contextId = searchParams.get('contextId');
+    const topicId = searchParams.get('topicId');
+    if (!questionId || !contextType || !contextId || !topicId || deeplinkHandled.current) return;
+
+    deeplinkHandled.current = true;
+    pendingQuestionDeeplink.current = { questionId, contextType, contextId };
+    setSearchParams({}, { replace: true });
+
+    void (async () => {
+      const { data: topicData } = await apiFetch<{ topic: ApiTopic }>(`/api/admin/topics/${topicId}`);
+      const topic = topicData?.topic;
+      if (!topic?.classId) return;
+
+      const { data: classData } = await apiFetch<{ class: ApiClass }>(`/api/admin/classes/${topic.classId}`);
+      const cls = classData?.class;
+      if (!cls?.standardId) return;
+
+      await loadStandards();
+      await loadClasses(cls.standardId);
+      await loadTopics(topic.classId);
+      await loadSubTopics(topicId);
+      await loadPrereqs(topicId);
+      await loadQuestions(contextType, contextId);
+
+      setSelection({
+        standardId: cls.standardId,
+        classId: topic.classId,
+        topicId,
+        subtopicId:
+          contextType === 'prereq'
+            ? `prereq-${contextId}`
+            : contextType === 'finaltest'
+              ? 'finaltest'
+              : contextId,
+      });
+      setView('subtopics');
+      setActiveTab(contextType === 'finaltest' ? 'video' : 'quiz');
+    })();
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    const pending = pendingQuestionDeeplink.current;
+    if (!pending) return;
+    const key = `${pending.contextType}:${pending.contextId}`;
+    const q = questionsMap[key]?.find((x) => x.id === pending.questionId);
+    if (!q) return;
+
+    const editType =
+      pending.contextType === 'prereq'
+        ? 'edit-preeval-quiz'
+        : pending.contextType === 'finaltest'
+          ? 'edit-finaltest-quiz'
+          : 'edit-quiz';
+    openModal(editType, q);
+    pendingQuestionDeeplink.current = null;
+  }, [questionsMap, selection.topicId, selection.subtopicId]);
 
   // ── Save ─────────────────────────────────────────────────────────────────────
 

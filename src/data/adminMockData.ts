@@ -20,9 +20,10 @@ export interface Student {
 export interface Question {
   id: string;
   text: string;
-  type: 'text' | 'mcq' | 'boolean';
+  type: 'text' | 'mcq' | 'boolean' | 'true_false' | 'image_upload';
+  imageUrl?: string;
   options?: string[];
-  correctAnswer: string;
+  correctAnswer?: string;
   explanation: string;
   difficulty: 'Easy' | 'Medium' | 'Hard';
 }
@@ -34,6 +35,7 @@ export interface Prerequisite {
   category: 'Major' | 'Intermediate' | 'Minor';
   questions?: Question[];
   passingThreshold?: number; // 0-100 percentage required to pass
+  maxAIAttempts?: number;
 }
 
 export interface SubTopic {
@@ -42,6 +44,8 @@ export interface SubTopic {
   videoUrl?: string;
   quizzes?: Question[];
   sequenceOrder?: number;
+  order?: number;
+  passingThreshold?: number;
 }
 
 export interface Topic {
@@ -49,6 +53,8 @@ export interface Topic {
   title: string;
   sequence: number;
   sequenceOrder?: number;
+  description?: string;
+  finalTestThreshold?: number;
   subTopics: SubTopic[];
   prerequisites?: Prerequisite[];
   preEvaluationQuiz?: Question[];
@@ -59,12 +65,14 @@ export interface Topic {
 export interface CurriculumClass {
   id: string;
   name: string;
+  passingThreshold?: number;
   curriculum: Topic[];
 }
 
 export interface Standard {
   id: string;
   name: string;
+  description?: string;
   classes: CurriculumClass[];
 }
 

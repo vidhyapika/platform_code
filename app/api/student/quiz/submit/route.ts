@@ -1,6 +1,6 @@
 import { verifyJWT, requireAuth } from "../../../../../backend/middleware/auth";
 import {
-  listQuestions,
+  listQuestionsForStudent,
   getPrerequisite,
   getTopic,
   getSubTopic,
@@ -51,7 +51,11 @@ export async function POST(req: Request) {
       contextType === "subtopic" ? subTopicId ?? contextId : subTopicId;
 
     // Score only questions included in this submission (AI retakes submit a subset of catalog questions).
-    const allCatalogQuestions = await listQuestions(contextType as QuestionContextType, contextId);
+    const allCatalogQuestions = await listQuestionsForStudent(
+      contextType as QuestionContextType,
+      contextId,
+      studentId
+    );
     if (allCatalogQuestions.length === 0) {
       return Response.json({ error: "No questions found for this context" }, { status: 404 });
     }

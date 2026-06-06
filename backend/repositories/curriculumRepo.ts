@@ -333,8 +333,16 @@ export type Question = {
   correctAnswer?: string;
   order: number;
   isAIGenerated?: boolean;
+  /** Set for AI-generated retake questions; scopes visibility to one student. */
+  generatedForStudentId?: string;
   createdAt?: FirebaseFirestore.Timestamp;
 };
+
+/** Admin/catalog questions always visible; AI questions only for the owning student. */
+export function isQuestionVisibleToStudent(q: Question, studentId: string): boolean {
+  if (!q.isAIGenerated) return true;
+  return q.generatedForStudentId === studentId;
+}
 
 export async function listQuestions(
   contextType: QuestionContextType,
@@ -348,6 +356,15 @@ export async function listQuestions(
   return snap.docs
     .map((d) => ({ id: d.id, ...d.data() } as Question))
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+
+export async function listQuestionsForStudent(
+  contextType: QuestionContextType,
+  contextId: string,
+  studentId: string
+): Promise<Question[]> {
+  const all = await listQuestions(contextType, contextId);
+  return all.filter((q) => isQuestionVisibleToStudent(q, studentId));
 }
 
 export async function getQuestion(id: string): Promise<Question | null> {

@@ -135,7 +135,7 @@ export function DemoPortal() {
                   <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors" />
                 </div>
                 <div className="mt-4 text-xs text-slate-500 font-medium">
-                  {loadingRole === "student" ? "Preparing demo student…" : "Starts with unlocked + completed topics"}
+                  {loadingRole === "student" ? "Preparing demo student…" : "Sample progress across multiple topics"}
                 </div>
               </button>
             </div>

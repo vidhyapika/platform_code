@@ -7,7 +7,7 @@ import {
   listTopics,
   listSubTopics,
   getPrerequisite,
-  listQuestions,
+  listQuestionsForStudent,
   getStudentEnrollment,
   getStudentEnrollments,
   enrollStudent,
@@ -56,15 +56,15 @@ export async function GET(req: Request) {
         ]);
 
         const prereqQuestions = prerequisite
-          ? await listQuestions("prereq", prerequisite.id)
+          ? await listQuestionsForStudent("prereq", prerequisite.id, student.id)
           : [];
 
-        const finalTestQuestions = await listQuestions("finaltest", topic.id);
+        const finalTestQuestions = await listQuestionsForStudent("finaltest", topic.id, student.id);
 
         const subTopicsWithProgress = await Promise.all(
           subTopics.map(async (st) => {
             const stProgress = await getSubTopicProgress(student.id, st.id);
-            const stQuestions = await listQuestions("subtopic", st.id);
+            const stQuestions = await listQuestionsForStudent("subtopic", st.id, student.id);
             return {
               ...st,
               progress: stProgress,

@@ -4,6 +4,9 @@ import {
 } from 'lucide-react';
 import type { Prerequisite, Question, StudentSubTopicProgress, StudentTopicProgress } from '../types';
 import { parseAnswerImageUrls } from '../utils/quizAnswerDisplay';
+import { FlagQuestionButton } from './FlagQuestionModal';
+import { useApiGet } from '../hooks/useApi';
+import type { QuestionFlag } from '../types/questionFlags';
 
 type ApiAnswer = { questionId: string; answer: string; correct: boolean; aiReasoning?: string };
 
@@ -40,10 +43,21 @@ function QuizAttemptBlock({
   att,
   attemptNumber,
   questionLookup,
+  flagScope,
+  studentFlags,
+  onFlagged,
 }: {
   att: ApiQuizAttempt;
   attemptNumber: number;
   questionLookup: Map<string, { text: string; correctAnswer?: string; type?: Question['type'] }>;
+  flagScope: {
+    topicId: string;
+    contextType: 'prereq' | 'subtopic' | 'finaltest';
+    contextId: string;
+    subTopicId?: string;
+  };
+  studentFlags: QuestionFlag[];
+  onFlagged: () => void;
 }) {
   const date = formatAttemptDate(att.timestamp);
   const pct = att.total > 0 ? Math.round((att.score / att.total) * 100) : 0;
@@ -132,6 +146,25 @@ function QuizAttemptBlock({
                     {a.aiReasoning}
                   </p>
                 ) : null}
+                <div className="pt-2 flex justify-end">
+                  <FlagQuestionButton
+                    compact
+                    context={{
+                      topicId: flagScope.topicId,
+                      contextType: flagScope.contextType,
+                      contextId: flagScope.contextId,
+                      subTopicId: flagScope.subTopicId,
+                      questionId: a.questionId,
+                      quizAttemptId: att.id,
+                    }}
+                    existingStatus={
+                      studentFlags.find(
+                        (f) => f.questionId === a.questionId && f.quizAttemptId === att.id
+                      )?.status ?? null
+                    }
+                    onFlagged={onFlagged}
+                  />
+                </div>
               </div>
             );
           })
@@ -171,6 +204,11 @@ export function TopicOverviewHistory({
   hasFinalTest: boolean;
 }) {
   const questionLookup = useMemo(() => buildQuestionLookup(topic), [topic]);
+  const { data: flagData, refetch: refetchFlags } = useApiGet<{ flags: QuestionFlag[] }>(
+    '/api/student/question-flags',
+    [topic.id]
+  );
+  const studentFlags = flagData?.flags ?? [];
 
   const anyAttempts =
     prereqs.some((p) => attemptsForPrereq(topicStatus, p.id).length > 0) ||
@@ -237,6 +275,9 @@ export function TopicOverviewHistory({
                             att={att}
                             attemptNumber={attempts.length - idx}
                             questionLookup={questionLookup}
+                            flagScope={{ topicId: topic.id, contextType: 'prereq', contextId: p.id }}
+                            studentFlags={studentFlags}
+                            onFlagged={() => void refetchFlags()}
                           />
                         ))}
                       </div>
@@ -306,6 +347,14 @@ export function TopicOverviewHistory({
                             att={att}
                             attemptNumber={attempts.length - idx}
                             questionLookup={questionLookup}
+                            flagScope={{
+                              topicId: topic.id,
+                              contextType: 'subtopic',
+                              contextId: sub.id,
+                              subTopicId: sub.id,
+                            }}
+                            studentFlags={studentFlags}
+                            onFlagged={() => void refetchFlags()}
                           />
                         ))}
                       </div>
@@ -339,6 +388,9 @@ export function TopicOverviewHistory({
                     att={att}
                     attemptNumber={finalAttempts(topicStatus).length - idx}
                     questionLookup={questionLookup}
+                    flagScope={{ topicId: topic.id, contextType: 'finaltest', contextId: topic.id }}
+                    studentFlags={studentFlags}
+                    onFlagged={() => void refetchFlags()}
                   />
                 ))}
               </div>

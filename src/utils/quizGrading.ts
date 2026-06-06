@@ -24,5 +24,8 @@ export function gradingFromSubmitResponse(d: any): QuizSubmitGradingResult | nul
     total,
     perQuestion,
     evaluationIncomplete: !!d.evaluationIncomplete,
+    ...(typeof d.passed === 'boolean' ? { serverPassed: d.passed } : {}),
+    ...(d.attemptId ? { attemptId: String(d.attemptId) } : {}),
+    ...(d.flagged ? { flagged: true } : {}),
   };
 }

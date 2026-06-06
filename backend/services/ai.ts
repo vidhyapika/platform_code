@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { Question, createQuestionsInBatch } from "../repositories/curriculumRepo";
+import { Question, createQuestionsInBatch, listQuestions } from "../repositories/curriculumRepo";
 
 function getGenAI(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -274,6 +274,7 @@ Respond in this exact JSON format (no markdown, just JSON):
 // ─── Retake Quiz Generation ───────────────────────────────────────────────────
 
 export async function generateRetakeQuestions(params: {
+  studentId: string;
   topicName: string;
   subTopicName?: string;
   failedQuestions: { text: string; studentAnswer?: string; correctAnswer?: string }[];
@@ -281,7 +282,8 @@ export async function generateRetakeQuestions(params: {
   contextType: "prereq" | "subtopic" | "finaltest";
   contextId: string;
 }): Promise<string[]> {
-  const { topicName, subTopicName, failedQuestions, count = 5, contextType, contextId } = params;
+  const { studentId, topicName, subTopicName, failedQuestions, count = 5, contextType, contextId } =
+    params;
 
   const context = subTopicName ? `${topicName} > ${subTopicName}` : topicName;
   const failedList = failedQuestions
@@ -316,6 +318,9 @@ Respond in this exact JSON format (no markdown, just JSON):
     const cleaned = cleanLikelyJson(raw);
     const parsed = JSON.parse(cleaned);
 
+    const existing = await listQuestions(contextType, contextId);
+    const maxOrder = existing.reduce((m, q) => Math.max(m, q.order ?? 0), 0);
+
     const questions: Omit<Question, "id" | "createdAt">[] = parsed.questions.map(
       (q: any, i: number) => ({
         contextType,
@@ -324,50 +329,15 @@ Respond in this exact JSON format (no markdown, just JSON):
         type: "mcq" as const,
         options: q.options,
         correctAnswer: q.correctAnswer,
-        order: i,
+        order: maxOrder + 1 + i,
         isAIGenerated: true,
+        generatedForStudentId: studentId,
       })
     );
 
     return createQuestionsInBatch(questions);
   } catch {
     return [];
-  }
-}
-
-// ─── Chat Response ────────────────────────────────────────────────────────────
-
-export type ChatMessage = { role: "tutor" | "student"; content: string };
-
-export async function generateChatResponse(params: {
-  topicName: string;
-  subTopicName?: string;
-  history: ChatMessage[];
-  studentMessage: string;
-}): Promise<string> {
-  const { topicName, subTopicName, history, studentMessage } = params;
-
-  const context = subTopicName ? `${topicName} > ${subTopicName}` : topicName;
-
-  const historyText = history
-    .map((m) => `${m.role === "tutor" ? "Tutor" : "Student"}: ${m.content}`)
-    .join("\n");
-
-  const prompt = `You are a friendly, expert math tutor helping a school student understand "${context}".
-
-Conversation so far:
-${historyText || "(no previous messages)"}
-
-Student: ${studentMessage}
-
-Respond as a helpful tutor. Be concise, encouraging, and use LaTeX for math ($...$ inline, $$...$$ block). Explain step by step if needed.
-
-Tutor:`;
-
-  try {
-    return await generateText(prompt);
-  } catch {
-    return "I'm having trouble connecting right now. Please try again in a moment.";
   }
 }
 
@@ -415,8 +385,10 @@ export async function evaluateSubjectiveAnswer(params: {
     parts = [
       {
         text: `Question: ${questionText}\nExpected answer: ${correctAnswerText}\nStudent answer: ${studentAnswer}\n\n` +
-          `Evaluate if the student answer is correct based on the expected answer. ` +
-          `Be reasonably lenient with phrasing but strict on the core concept. ` +
+          `Evaluate whether the student answer is mathematically equivalent to the expected answer. ` +
+          `Be lenient on how the answer is written: symbolic notation, informal keyboard-style input, and plain words are all acceptable. ` +
+          `Be strict on whether the underlying mathematics is correct (value, operation, and concept must match). ` +
+          `Do not require a specific formatting style. ` +
           `Respond in exact JSON: {"correct": true/false, "reasoning": "short explanation"}`
       }
     ];
@@ -461,4 +433,115 @@ export async function evaluateSubjectiveAnswer(params: {
       evaluationFailed: true,
     };
   }
+}
+
+// ─── Voice session recap notes ────────────────────────────────────────────────
+
+const THIN_NOTES_THRESHOLD = 200;
+
+function whiteboardRecapLines(log: Record<string, unknown>[]): string[] {
+  const lines: string[] = [];
+  for (const entry of log.slice(-40)) {
+    const type = String(entry.type ?? "");
+    if (type.startsWith("graph:") || type === "cognitive_state") continue;
+    const content = entry.content as string | undefined;
+    const title = entry.title as string | undefined;
+    const caption = entry.caption as string | undefined;
+    if (type === "title" && content) lines.push(`- **${content}**`);
+    else if (type === "highlight" && content) lines.push(`- Formula: $${content}$`);
+    else if ((type === "write" || type === "step" || type === "question") && content) {
+      lines.push(`- ${content.slice(0, 280)}${content.length > 280 ? "…" : ""}`);
+    } else if (type === "rich_card" && title) lines.push(`- Card: ${title}`);
+    else if ((type === "diagram_ready" || type === "scene_ready") && caption) {
+      lines.push(`- Diagram/scene: ${caption}`);
+    }
+  }
+  return lines.slice(-12);
+}
+
+export async function generateVoiceSessionRecapNotes(params: {
+  topicName: string;
+  subTopicName?: string;
+  mistakes: { mistakeTitle: string; fix: string }[];
+  lessonCards: { title: string; content: string }[];
+  whiteboardLog: Record<string, unknown>[];
+  transcript: { role: string; text: string }[];
+}): Promise<string> {
+  const { topicName, subTopicName, mistakes, lessonCards, whiteboardLog, transcript } = params;
+  const context = subTopicName ? `${topicName} > ${subTopicName}` : topicName;
+  const boardLines = whiteboardRecapLines(whiteboardLog);
+  const transcriptSample = transcript
+    .slice(-24)
+    .map((t) => `${t.role === "student" ? "Student" : "Tutor"}: ${t.text}`)
+    .join("\n");
+
+  const prompt = `You are writing study notes for a student who just finished a live voice tutoring session on "${context}".
+
+Create markdown study notes the student can review later. Use:
+- ## Key takeaways (3-6 bullets)
+- ## Formulas & steps (with $...$ or $$...$$ for math)
+- ## What we practiced (short paragraph)
+
+Use only information from the session data below. Be encouraging and concise.
+
+Mistakes covered:
+${mistakes.map((m) => `- ${m.mistakeTitle}: ${m.fix}`).join("\n") || "(none)"}
+
+Lesson cards:
+${lessonCards.map((c) => `- ${c.title}: ${c.content.slice(0, 200)}`).join("\n") || "(none)"}
+
+Whiteboard highlights:
+${boardLines.join("\n") || "(none)"}
+
+Recent transcript:
+${transcriptSample || "(none)"}
+
+Respond with markdown only (no JSON, no code fences).`;
+
+  try {
+    return await generateText(prompt);
+  } catch {
+    const fallback: string[] = ["## Key takeaways", ""];
+    for (const m of mistakes.slice(0, 5)) {
+      fallback.push(`- **${m.mistakeTitle}**: ${m.fix}`);
+    }
+    for (const c of lessonCards.slice(0, 3)) {
+      fallback.push(`- ${c.title}: ${c.content.slice(0, 150)}…`);
+    }
+    if (boardLines.length) {
+      fallback.push("", "## Board recap", ...boardLines);
+    }
+    return fallback.join("\n");
+  }
+}
+
+export async function buildVoiceSessionNotes(
+  session: {
+    mistakes?: { mistakeTitle: string; fix: string }[];
+    lessonCards?: { title: string; content: string }[];
+  },
+  agentNotes: string,
+  whiteboardLog: Record<string, unknown>[],
+  transcript: { role: string; text: string }[],
+  topicName: string,
+  subTopicName?: string
+): Promise<string> {
+  const trimmed = (agentNotes ?? "").trim();
+  const boardRecap = whiteboardRecapLines(whiteboardLog);
+
+  if (trimmed.length < THIN_NOTES_THRESHOLD) {
+    return generateVoiceSessionRecapNotes({
+      topicName,
+      subTopicName,
+      mistakes: session.mistakes ?? [],
+      lessonCards: session.lessonCards ?? [],
+      whiteboardLog,
+      transcript,
+    });
+  }
+
+  if (boardRecap.length === 0) return trimmed;
+  if (trimmed.includes("## Board recap")) return trimmed;
+
+  return `${trimmed}\n\n## Board recap\n${boardRecap.join("\n")}`;
 }

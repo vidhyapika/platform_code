@@ -21,24 +21,21 @@ import { useApiGet } from '../hooks/useApi';
 import { mapRawTopicToStudentTopic } from '../utils/studentCurriculumMap';
 
 type NextAction = {
-  label: 'Locked' | 'Start' | 'Continue' | 'Review';
+  label: 'Start' | 'Continue' | 'Review';
   disabled: boolean;
-  reason?: string;
 };
 
-function computeNextAction(topic: StudentTopicProgress, locked: boolean): NextAction {
-  if (locked) return { label: 'Locked', disabled: true, reason: 'Complete the previous topic to unlock this.' };
+function computeNextAction(topic: StudentTopicProgress): NextAction {
   if (topic.status === 'completed') return { label: 'Review', disabled: false };
   if (topic.status === 'in-progress') return { label: 'Continue', disabled: false };
   return { label: 'Start', disabled: false };
 }
 
-function StatusPill({ label, status }: { label: string; status: 'completed' | 'in-progress' | 'not-started' | 'locked' }) {
+function StatusPill({ label, status }: { label: string; status: 'completed' | 'in-progress' | 'not-started' }) {
   const map = {
     completed: 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200',
     'in-progress': 'bg-blue-100 text-blue-700 ring-1 ring-blue-200',
     'not-started': 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
-    locked: 'bg-slate-50 text-slate-400 ring-1 ring-slate-200',
   };
   return (
     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider shadow-sm ${map[status]}`}>
@@ -50,21 +47,19 @@ function StatusPill({ label, status }: { label: string; status: 'completed' | 'i
 function RoadmapTopicItem({
   topic,
   idx,
-  locked,
   open,
   onToggle,
   onGo,
 }: {
   topic: StudentTopicProgress;
   idx: number;
-  locked: boolean;
   open: boolean;
   onToggle: () => void;
   onGo: () => void;
 }) {
   const isCompleted = topic.status === 'completed';
   const isInProgress = topic.status === 'in-progress';
-  const action = computeNextAction(topic, locked);
+  const action = computeNextAction(topic);
 
   const prereqCount = topic.prerequisites?.length ?? 0;
   const prereqCleared = topic.prerequisiteScores?.length ?? 0;
@@ -79,26 +74,21 @@ function RoadmapTopicItem({
     + (topic.postEvaluationQuiz?.length ?? 0)
     + (topic.finalTestQuiz?.length ?? 0);
 
-  const cardShell = locked
-    ? 'border-slate-200/90 bg-slate-50/80 opacity-90'
-    : isCompleted
-      ? 'border-emerald-200/70 bg-white'
-      : isInProgress
-        ? 'border-[#0084B4]/25 bg-white shadow-[0_4px_24px_rgba(0,132,180,0.08)]'
-        : 'border-slate-200/80 bg-white';
+  const cardShell = isCompleted
+    ? 'border-emerald-200/70 bg-white'
+    : isInProgress
+      ? 'border-[#0084B4]/25 bg-white shadow-[0_4px_24px_rgba(0,132,180,0.08)]'
+      : 'border-slate-200/80 bg-white';
 
-  const accentBar =
-    locked ? 'bg-slate-200' : isCompleted ? 'bg-emerald-500' : isInProgress ? 'bg-[#0084B4]' : 'bg-slate-300';
+  const accentBar = isCompleted ? 'bg-emerald-500' : isInProgress ? 'bg-[#0084B4]' : 'bg-slate-300';
 
-  const iconBg = locked
-    ? 'bg-slate-200/80 text-slate-500'
-    : isCompleted
-      ? 'bg-emerald-500 text-white'
-      : isInProgress
-        ? 'bg-[#0084B4] text-white'
-        : 'bg-slate-100 text-slate-700';
+  const iconBg = isCompleted
+    ? 'bg-emerald-500 text-white'
+    : isInProgress
+      ? 'bg-[#0084B4] text-white'
+      : 'bg-slate-100 text-slate-700';
 
-  const timelineColor = locked ? 'bg-slate-200/90' : isCompleted ? 'bg-emerald-300/80' : 'bg-sky-200/90';
+  const timelineColor = isCompleted ? 'bg-emerald-300/80' : 'bg-sky-200/90';
 
   return (
     <div className="relative group">
@@ -112,7 +102,7 @@ function RoadmapTopicItem({
           <div
             className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center text-sm sm:text-base font-black shadow-sm z-10 ring-4 ring-[#F8F9FA] ${iconBg}`}
           >
-            {locked ? <Lock className="w-5 h-5 sm:w-6 sm:h-6" aria-hidden /> : isCompleted ? <CheckCircle2 className="w-6 h-6 sm:w-7 sm:h-7" aria-hidden /> : idx + 1}
+            {isCompleted ? <CheckCircle2 className="w-6 h-6 sm:w-7 sm:h-7" aria-hidden /> : idx + 1}
           </div>
         </div>
 
@@ -125,15 +115,14 @@ function RoadmapTopicItem({
             <button
               type="button"
               onClick={() => onGo()}
-              disabled={locked}
-              className="flex-1 min-w-0 text-left disabled:cursor-not-allowed disabled:opacity-60 group/title"
+              className="flex-1 min-w-0 text-left group/title"
             >
               <div className="flex items-center gap-2 mb-3 flex-wrap">
                 <StatusPill
-                  label={locked ? 'Locked' : isCompleted ? 'Completed' : isInProgress ? 'In progress' : 'Not started'}
-                  status={locked ? 'locked' : isCompleted ? 'completed' : isInProgress ? 'in-progress' : 'not-started'}
+                  label={isCompleted ? 'Completed' : isInProgress ? 'In progress' : 'Not started'}
+                  status={isCompleted ? 'completed' : isInProgress ? 'in-progress' : 'not-started'}
                 />
-                {!locked && prereqCount > 0 && (
+                {prereqCount > 0 && (
                   <span
                     className={`inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wide px-2.5 py-1 rounded-lg ${
                       prereqBlocked ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-600'
@@ -143,36 +132,28 @@ function RoadmapTopicItem({
                     Prereqs {prereqCleared}/{prereqCount}
                   </span>
                 )}
-                {!locked && (
-                  <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wide px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600">
-                    <ListChecks className="w-3.5 h-3.5 shrink-0" aria-hidden />
-                    Modules {doneSub}/{totalSub}
-                  </span>
-                )}
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wide px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600">
+                  <ListChecks className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                  Modules {doneSub}/{totalSub}
+                </span>
               </div>
-              <h3
-                className={`text-lg sm:text-xl font-black tracking-tight leading-snug ${locked ? 'text-slate-500' : 'text-slate-900 group-hover/title:text-[#006A91]'}`}
-              >
+              <h3 className="text-lg sm:text-xl font-black tracking-tight leading-snug text-slate-900 group-hover/title:text-[#006A91]">
                 {topic.title}
               </h3>
-              {!locked && (
-                <p className="text-xs font-semibold text-slate-500 mt-2">
-                  Open to see outline, videos, and quizzes — picks up where you left off.
-                </p>
-              )}
+              <p className="text-xs font-semibold text-slate-500 mt-2">
+                Open to see outline, videos, and quizzes — picks up where you left off.
+              </p>
             </button>
 
             <div className="flex flex-col items-end gap-3 shrink-0">
-              {!locked && (
-                <div className="text-right hidden sm:block">
-                  <p
-                    className={`text-2xl font-black tabular-nums leading-none ${isCompleted ? 'text-emerald-600' : 'text-[#0084B4]'}`}
-                  >
-                    {topic.progress}%
-                  </p>
-                  <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-wider">Topic progress</p>
-                </div>
-              )}
+              <div className="text-right hidden sm:block">
+                <p
+                  className={`text-2xl font-black tabular-nums leading-none ${isCompleted ? 'text-emerald-600' : 'text-[#0084B4]'}`}
+                >
+                  {topic.progress}%
+                </p>
+                <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-wider">Topic progress</p>
+              </div>
               <button
                 type="button"
                 aria-expanded={open}
@@ -190,17 +171,15 @@ function RoadmapTopicItem({
             </div>
           </div>
 
-          {!locked && (
-            <div className="px-5 sm:px-6 pb-5">
-              <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                <motion.div
-                  className={`h-full rounded-full ${isCompleted ? 'bg-emerald-500' : 'bg-[#0084B4]'}`}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${topic.progress}%` }}
-                />
-              </div>
+          <div className="px-5 sm:px-6 pb-5">
+            <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+              <motion.div
+                className={`h-full rounded-full ${isCompleted ? 'bg-emerald-500' : 'bg-[#0084B4]'}`}
+                initial={{ width: 0 }}
+                animate={{ width: `${topic.progress}%` }}
+              />
             </div>
-          )}
+          </div>
 
           <motion.div
             initial={false}
@@ -209,19 +188,7 @@ function RoadmapTopicItem({
             className="overflow-hidden"
           >
             <div className="px-5 sm:px-6 pb-6 pt-1 border-t border-slate-100/90 bg-gradient-to-b from-slate-50/90 to-slate-50/40">
-              {locked && action.reason && (
-                <div className="mb-5 flex items-start gap-3 bg-slate-100 border border-slate-200 rounded-xl p-4">
-                  <div className="p-2 bg-white rounded-lg shadow-sm">
-                    <Lock className="w-5 h-5 text-slate-500" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-extrabold text-slate-800">Topic Locked</p>
-                    <p className="text-xs font-medium text-slate-500 mt-1">{action.reason}</p>
-                  </div>
-                </div>
-              )}
-
-              {!locked && prereqBlocked && (
+              {prereqBlocked && (
                 <div className="mb-5 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
                   <div className="p-2 bg-white rounded-lg shadow-sm">
                     <Flag className="w-5 h-5 text-amber-600" />
@@ -262,7 +229,6 @@ function RoadmapTopicItem({
                   {action.label === 'Review' && 'You have completed this topic. Revisit content or retry quizzes anytime.'}
                   {action.label === 'Continue' && 'You are currently learning this topic. Resume where you left off.'}
                   {action.label === 'Start' && 'Ready to learn? Begin this topic now.'}
-                  {action.label === 'Locked' && 'Finish previous topics to unlock this content.'}
                 </div>
                 <button
                   onClick={() => onGo()}
@@ -276,9 +242,7 @@ function RoadmapTopicItem({
                           ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 hover:shadow-md'
                           : 'bg-slate-900 text-white hover:bg-slate-800 hover:shadow-md'}`}
                 >
-                  {action.label === 'Locked'
-                    ? <><Lock className="w-4 h-4" /> Locked</>
-                    : action.label === 'Review'
+                  {action.label === 'Review'
                       ? <><CheckCircle2 className="w-4 h-4" /> Review Topic</>
                       : action.label === 'Continue'
                         ? <><PlayCircle className="w-4 h-4 fill-current" /> Continue Learning</>
@@ -334,14 +298,13 @@ export function Courses() {
   const totalTopics = topics.length;
   const overallProgress = totalTopics > 0 ? Math.round((completedTopics / totalTopics) * 100) : 0;
 
-  const inProgressTopic = topics.find(t => t.status === 'in-progress');
-  const firstUnlockedIdx = topics.findIndex((t, i) => !(i > 0 && topics[i - 1].status === 'not-started'));
-  const firstActionableIdx = topics.findIndex((t, i) => {
-    const locked = i > 0 && topics[i - 1].status === 'not-started';
-    if (locked) return false;
-    return t.status !== 'completed';
-  });
-  const upNextIdx = (firstActionableIdx >= 0 ? firstActionableIdx : (firstUnlockedIdx >= 0 ? firstUnlockedIdx : 0));
+  const upNextIdx = useMemo(() => {
+    const inProgressIdx = topics.findIndex((t) => t.status === 'in-progress');
+    if (inProgressIdx >= 0) return inProgressIdx;
+    const notStartedIdx = topics.findIndex((t) => t.status === 'not-started');
+    if (notStartedIdx >= 0) return notStartedIdx;
+    return topics.length > 0 ? 0 : -1;
+  }, [topics]);
   const upNextTopic = topics[upNextIdx];
 
   const containerVariants = {
@@ -450,13 +413,12 @@ export function Courses() {
               </p>
               <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Learning path</h2>
               <p className="text-sm text-slate-600 mt-2 max-w-xl leading-relaxed">
-                Work through topics in order.{totalTopics > 0 ? ` ${completedTopics} of ${totalTopics} completed · ${overallProgress}% overall.` : ''}
+                Choose any topic to start or continue.{totalTopics > 0 ? ` ${completedTopics} of ${totalTopics} completed · ${overallProgress}% overall.` : ''}
               </p>
               <div className="flex flex-wrap gap-2 mt-4">
                 <StatusPill label="Completed" status="completed" />
                 <StatusPill label="In Progress" status="in-progress" />
                 <StatusPill label="Not Started" status="not-started" />
-                <StatusPill label="Locked" status="locked" />
               </div>
             </div>
             {upNextTopic && (
@@ -467,11 +429,7 @@ export function Courses() {
                     state: { topicIdx: upNextIdx, studentTopic: upNextTopic, curriculums, selectedClassIdx },
                   })
                 }
-                disabled={upNextIdx > 0 && topics[upNextIdx - 1]?.status === 'not-started'}
-                className={`shrink-0 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl text-sm font-extrabold transition-all
-                  ${upNextIdx > 0 && topics[upNextIdx - 1]?.status === 'not-started'
-                    ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                    : 'bg-slate-900 text-white hover:bg-slate-800 shadow-md hover:shadow-lg'}`}
+                className="shrink-0 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl text-sm font-extrabold transition-all bg-slate-900 text-white hover:bg-slate-800 shadow-md hover:shadow-lg"
               >
                 <PlayCircle className="w-5 h-5" aria-hidden />
                 Resume / next topic
@@ -492,14 +450,12 @@ export function Courses() {
 
           <div className="space-y-6 pb-20 overflow-hidden">
             {topics.map((topic, idx) => {
-              const locked = idx > 0 && topics[idx - 1].status === 'not-started';
               const open = openId === topic.id;
               return (
                 <RoadmapTopicItem
                   key={topic.id}
                   topic={topic}
                   idx={idx}
-                  locked={locked}
                   open={open}
                   onToggle={() => setOpenId((p) => (p === topic.id ? null : topic.id))}
                   onGo={() => {

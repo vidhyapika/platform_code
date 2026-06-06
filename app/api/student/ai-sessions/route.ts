@@ -51,12 +51,18 @@ export async function GET(req: Request) {
     lessonCount: s.lessonCards?.length ?? 0,
     drillCount: s.drills?.length ?? 0,
     status: s.status,
+    voiceStatus: s.voiceStatus ?? null,
     ...(detail
       ? {
           lessonCards: s.lessonCards ?? [],
           mistakes: s.mistakes ?? [],
           drills: s.drills ?? [],
           messages: s.messages ?? [],
+          transcript: s.transcript ?? [],
+          notes: s.notes ?? "",
+          assignment: s.assignment ?? "",
+          failedQuestionsSnapshot: s.failedQuestionsSnapshot ?? [],
+          whiteboardLog: (s.whiteboardLog as Record<string, unknown>[] | undefined) ?? [],
         }
       : {}),
   }));

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Trophy, Sparkles, CheckCircle2, XCircle, ChevronRight,
@@ -6,14 +6,18 @@ import {
   LayoutGrid, PlayCircle, HelpCircle, Upload, Loader2, Trash2, AlertCircle,
 } from 'lucide-react';
 import { AIBadge } from './ui/AIBadge';
-import { AITeachingPanel } from './AITeachingPanel';
+import { VoiceClassroomPanel } from './voice/VoiceClassroomPanel';
 import { MathRenderer } from './MathRenderer';
+import { MathAnswerInput } from './MathAnswerInput';
 import { apiFetch } from '../hooks/useApi';
 import type { Question } from '../types';
 import { compressImagesToBase64 } from '../utils/imageCompress';
 import { parseAnswerImageUrls } from '../utils/quizAnswerDisplay';
 import { gradingFromSubmitResponse } from '../utils/quizGrading';
 import type { QuizSubmitGradingResult } from './InlineQuiz';
+import { useApiGet } from '../hooks/useApi';
+import { deriveQuizCoachingState } from '../utils/quizCoachingState';
+import { QuizCoachingFailFooter, QuizCoachingHubCard } from './QuizCoachingActions';
 
 interface FinalTestScreenProps {
   topicTitle: string;
@@ -51,7 +55,73 @@ export function FinalTestScreen({
   const [evaluationIncomplete, setEvaluationIncomplete] = useState(false);
   const [reviewGrading, setReviewGrading] = useState<QuizSubmitGradingResult | null>(null);
   const [passingThreshold, setPassingThreshold] = useState(60);
+  const [aiEntryIntent, setAiEntryIntent] = useState<'coach' | 'retake'>('coach');
   const apiFailedQuestions              = useRef<{ questionId: string; text: string; type?: string; studentAnswer?: string; correctAnswer?: string; aiReasoning?: string }[]>([]);
+
+  const { data: topicStatus, refetch: refetchTopicStatus } = useApiGet<any>(
+    topicId ? `/api/student/topics/${topicId}/status` : '/api/healthz',
+    [topicId],
+  );
+
+  const { data: aiSessionsPayload, refetch: refetchAiSessions } = useApiGet<{
+    sessions: Array<{
+      id: string;
+      voiceStatus?: 'active' | 'ended' | null;
+      contextType?: string;
+      contextId?: string | null;
+    }>;
+  }>(
+    topicId
+      ? `/api/student/ai-sessions?topicId=${encodeURIComponent(topicId)}&contextType=finaltest&contextId=${encodeURIComponent(topicId)}&detail=1`
+      : '/api/healthz',
+    [topicId],
+  );
+
+  const coachingState = useMemo(
+    () =>
+      topicId
+        ? deriveQuizCoachingState({
+            contextType: 'finaltest',
+            contextId: topicId,
+            questions,
+            topicStatus: topicStatus
+              ? {
+                  progress: topicStatus.progress,
+                  subTopicProgress: topicStatus.subTopicProgress,
+                  prereqQuizAttempts: topicStatus.prereqQuizAttempts,
+                  subtopicQuizAttempts: topicStatus.subtopicQuizAttempts,
+                  finalTestAttempts: topicStatus.finalTestAttempts,
+                }
+              : null,
+            aiSessions: aiSessionsPayload?.sessions,
+            apiFailed: apiFailedQuestions.current.length ? apiFailedQuestions.current : undefined,
+          })
+        : null,
+    [topicId, questions, topicStatus, aiSessionsPayload],
+  );
+
+  function openAiPanel(intent: 'coach' | 'retake') {
+    setAiEntryIntent(intent);
+    setTestState('ai-teaching');
+  }
+
+  function closeAiPanel() {
+    setTestState('intro');
+    void refetchTopicStatus();
+    void refetchAiSessions();
+  }
+
+  const finalTestCoachingActions =
+    coachingState && (coachingState.coachingAvailable || coachingState.atCoachingCap)
+      ? {
+          coachingAvailable: coachingState.coachingAvailable,
+          canStartAiRetake: coachingState.canStartAiRetake,
+          hasCompletedTutorSession: coachingState.hasCompletedTutorSession,
+          atCoachingCap: coachingState.atCoachingCap,
+          onStartTutor: () => openAiPanel('coach'),
+          onStartAiRetake: () => openAiPanel('retake'),
+        }
+      : undefined;
 
   const q = questions[currentQ];
   const isLast = currentQ === questions.length - 1;
@@ -108,6 +178,7 @@ export function FinalTestScreen({
         if (typeof res.data?.score === 'number') {
           localScore = res.data.score;
         }
+        void refetchTopicStatus();
       } catch {}
     } else {
       setEvaluationIncomplete(false);
@@ -172,6 +243,12 @@ export function FinalTestScreen({
                 >
                   <ClipboardCheck className="w-6 h-6" /> Begin Final Test <ChevronRight className="w-6 h-6" />
                 </button>
+
+                {finalTestCoachingActions ? (
+                  <div className="mt-8 max-w-2xl">
+                    <QuizCoachingHubCard {...finalTestCoachingActions} />
+                  </div>
+                ) : null}
               </div>
 
               {/* Right Stats & Info */}
@@ -345,12 +422,11 @@ export function FinalTestScreen({
                               })()}
                             </div>
                           ) : q.type === 'text' ? (
-                            <textarea
-                              rows={6}
-                              placeholder="Type your answer here..."
+                            <MathAnswerInput
                               value={answers[q.id] || ''}
-                              onChange={(e) => setAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
-                              className="w-full p-5 border-2 border-slate-200 rounded-3xl resize-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none font-medium text-slate-700 placeholder:text-slate-400 text-lg"
+                              onChange={(next) => setAnswers(prev => ({ ...prev, [q.id]: next }))}
+                              rows={6}
+                              className="[&_textarea]:rounded-3xl [&_textarea]:p-5 [&_textarea]:text-lg [&_textarea]:focus:border-indigo-500 [&_textarea]:focus:ring-indigo-500/10"
                             />
                           ) : (
                             <div className="grid grid-cols-1 gap-4">
@@ -591,11 +667,17 @@ export function FinalTestScreen({
                   <button onClick={handleTopicComplete} className="w-full sm:w-auto px-12 py-5 bg-gradient-to-r from-[#0084B4] to-[#006A91] text-white text-xl font-black rounded-2xl shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all flex items-center justify-center gap-3">
                     <Star className="w-6 h-6" /> Complete Topic <ChevronRight className="w-6 h-6" />
                   </button>
-                ) : (
-                  <button onClick={() => setTestState('ai-teaching')} className="w-full sm:w-auto px-12 py-5 bg-slate-900 text-white text-xl font-black rounded-2xl shadow-xl hover:shadow-2xl hover:bg-slate-800 hover:-translate-y-1 transition-all flex items-center justify-center gap-3">
-                    <Brain className="w-6 h-6 text-indigo-400" /> Get AI Help & Retake <ChevronRight className="w-6 h-6" />
-                  </button>
-                )}
+                ) : coachingState ? (
+                  <QuizCoachingFailFooter
+                    coachingAvailable={coachingState.coachingAvailable}
+                    canStartAiRetake={coachingState.canStartAiRetake}
+                    hasCompletedTutorSession={coachingState.hasCompletedTutorSession}
+                    atCoachingCap={coachingState.atCoachingCap}
+                    onStartTutor={() => openAiPanel('coach')}
+                    onStartAiRetake={() => openAiPanel('retake')}
+                    onDoLater={() => setTestState('intro')}
+                  />
+                ) : null}
               </div>
 
               {/* Wide AI Analysis Box */}
@@ -683,25 +765,28 @@ export function FinalTestScreen({
         {/* ── 4. AI Teaching ──────────────────────────────────────────────── */}
         {testState === 'ai-teaching' && (
           <div className="flex-1 w-full h-full">
-            <AITeachingPanel
+            <VoiceClassroomPanel
               topicTitle={topicTitle}
               kind="finaltest"
               topicId={topicId}
               contextId={topicId}
+              entryIntent={aiEntryIntent}
               failedQuestions={
-                apiFailedQuestions.current.length > 0
-                  ? apiFailedQuestions.current
-                  : wrongAnswers.map((w) => ({
-                      questionId: w.questionId,
-                      text: w.questionText,
-                      type: w.type,
-                      studentAnswer: w.yourAnswer,
-                      correctAnswer: w.correctAnswer ?? '',
-                    }))
+                coachingState?.failedQuestions?.length
+                  ? coachingState.failedQuestions
+                  : apiFailedQuestions.current.length > 0
+                    ? apiFailedQuestions.current
+                    : wrongAnswers.map((w) => ({
+                        questionId: w.questionId,
+                        text: w.questionText,
+                        type: w.type,
+                        studentAnswer: w.yourAnswer,
+                        correctAnswer: w.correctAnswer ?? '',
+                      }))
               }
-              retakeQuestions={apiFailedQuestions.current.length === 0 ? questions : undefined}
+              passingThreshold={passingThreshold}
               onPassed={handleTopicComplete}
-              onBack={() => setTestState('results')}
+              onBack={closeAiPanel}
             />
           </div>
         )}

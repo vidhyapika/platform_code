@@ -29,7 +29,8 @@
  * QUIZ COLUMNS  (all optional; quiz_type designates which quiz)
  *   quiz_type             "subtopic" | "pre" | "post"
  *   question_text         e.g. "What is 2+2?"
- *   question_type         "mcq" | "boolean" | "text"  (default: mcq)
+ *   question_type         "mcq" | "true_false" | "text" | "image_upload"  (boolean = alias)
+ *   image_url             optional diagram URL for the question stem
  *   option_a … option_d   MCQ options (optional for boolean/text)
  *   correct_answer        must match one of the options exactly (or "True"/"False")
  *   explanation           explanation text
@@ -77,15 +78,25 @@ export interface ParseResult {
 interface RawRow {
   rowIndex: number;
   standard_name: string;
+  standard_description: string;
   section_name: string;
+  class_passing_threshold: string;
   topic_title: string;
   topic_sequence: string;
+  topic_description: string;
+  final_test_threshold: string;
   prereq_title: string;
   prereq_category: string;
+  prereq_description: string;
+  prereq_passing_threshold: string;
+  prereq_max_ai_attempts: string;
   subtopic_title: string;
   subtopic_video: string;
+  subtopic_order: string;
+  subtopic_passing_threshold: string;
   quiz_type: string;
   question_text: string;
+  image_url: string;
   question_type: string;
   option_a: string;
   option_b: string;
@@ -94,6 +105,41 @@ interface RawRow {
   correct_answer: string;
   explanation: string;
   difficulty: string;
+}
+
+/** Canonical column order for full-hierarchy curriculum CSV / Excel template */
+export const FULL_TEMPLATE_HEADERS = [
+  'standard_name', 'standard_description',
+  'section_name', 'class_passing_threshold',
+  'topic_title', 'topic_sequence', 'topic_description', 'final_test_threshold',
+  'prereq_title', 'prereq_category', 'prereq_description', 'prereq_passing_threshold', 'prereq_max_ai_attempts',
+  'subtopic_title', 'subtopic_video', 'subtopic_order', 'subtopic_passing_threshold',
+  'quiz_type', 'question_text', 'image_url', 'question_type',
+  'option_a', 'option_b', 'option_c', 'option_d',
+  'correct_answer', 'explanation', 'difficulty',
+] as const;
+
+function parseThreshold(raw: string, fallback = 60): number {
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(100, Math.max(0, n));
+}
+
+function parsePositiveInt(raw: string, fallback: number): number {
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1) return fallback;
+  return n;
+}
+
+type FullQuestionType = 'mcq' | 'true_false' | 'text' | 'image_upload';
+
+function normalizeFullQuestionType(raw: string): FullQuestionType {
+  const s = raw.trim().toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+  if (!s) return 'mcq';
+  if (['true_false', 'boolean', 'bool', 'tf', 't_f', 'truefalse', 't/f'].includes(s)) return 'true_false';
+  if (['text', 'short_answer', 'shortanswer', 'subjective'].includes(s)) return 'text';
+  if (['image_upload', 'image', 'upload', 'photo', 'handwritten'].includes(s)) return 'image_upload';
+  return 'mcq';
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -110,15 +156,7 @@ function deterministicId(prefix: string, ...parts: string[]) {
   return `${prefix}-${slug(parts.join('-'))}`;
 }
 
-const KNOWN_COLUMNS = [
-  'standard_name', 'section_name',
-  'topic_title', 'topic_sequence',
-  'prereq_title', 'prereq_category',
-  'subtopic_title', 'subtopic_video',
-  'quiz_type', 'question_text', 'question_type',
-  'option_a', 'option_b', 'option_c', 'option_d',
-  'correct_answer', 'explanation', 'difficulty',
-];
+const KNOWN_COLUMNS: string[] = [...FULL_TEMPLATE_HEADERS];
 
 // ─── CSV tokeniser (handles quoted fields with commas inside) ─────────────────
 
@@ -184,60 +222,101 @@ export function parseCSV(csvText: string, existingStandards: Standard[] = []): P
   const result: Standard[] = JSON.parse(JSON.stringify(existingStandards));
 
   // ── Cascade context: each field inherits value from previous row if blank ──
-  let ctx: RawRow = {
+  const emptyCtx = (): RawRow => ({
     rowIndex: 0,
-    standard_name: '', section_name: '',
-    topic_title: '', topic_sequence: '',
+    standard_name: '', standard_description: '',
+    section_name: '', class_passing_threshold: '',
+    topic_title: '', topic_sequence: '', topic_description: '', final_test_threshold: '',
     prereq_title: '', prereq_category: '',
-    subtopic_title: '', subtopic_video: '',
-    quiz_type: '', question_text: '', question_type: '',
+    prereq_description: '', prereq_passing_threshold: '', prereq_max_ai_attempts: '',
+    subtopic_title: '', subtopic_video: '', subtopic_order: '', subtopic_passing_threshold: '',
+    quiz_type: '', question_text: '', image_url: '', question_type: '',
     option_a: '', option_b: '', option_c: '', option_d: '',
     correct_answer: '', explanation: '', difficulty: '',
-  };
+  });
+  let ctx = emptyCtx();
 
   // ── Helper: find-or-create a node in `result` ─────────────────────────────
-  const findOrCreateStandard = (name: string): Standard => {
+  const findOrCreateStandard = (name: string, description: string): Standard => {
     let std = result.find(s => s.name.toLowerCase() === name.toLowerCase());
     if (!std) {
-      std = { id: deterministicId('std', name), name, classes: [] };
+      std = { id: deterministicId('std', name), name, classes: [], description: description || undefined };
       result.push(std);
+    } else if (description && !std.description) {
+      std.description = description;
     }
     return std;
   };
 
-  const findOrCreateClass = (std: Standard, name: string): CurriculumClass => {
+  const findOrCreateClass = (std: Standard, name: string, passingThreshold: number): CurriculumClass => {
     let cls = std.classes.find(c => c.name.toLowerCase() === name.toLowerCase());
     if (!cls) {
-      cls = { id: deterministicId('cls', std.name, name), name, curriculum: [] };
+      cls = { id: deterministicId('cls', std.name, name), name, curriculum: [], passingThreshold };
       std.classes.push(cls);
+    } else if (passingThreshold !== 60 || cls.passingThreshold === undefined) {
+      cls.passingThreshold = passingThreshold;
     }
     return cls;
   };
 
-  const findOrCreateTopic = (cls: CurriculumClass, title: string, sequence: number): Topic => {
+  const findOrCreateTopic = (
+    cls: CurriculumClass,
+    title: string,
+    sequence: number,
+    description: string,
+    finalTestThreshold: number,
+  ): Topic => {
     let topic = cls.curriculum.find(t => t.title.toLowerCase() === title.toLowerCase());
     if (!topic) {
       topic = {
         id: deterministicId('top', title),
         title,
         sequence,
+        description: description || undefined,
+        finalTestThreshold,
         subTopics: [],
         prerequisites: [],
         preEvaluationQuiz: [],
         postEvaluationQuiz: [],
       };
       cls.curriculum.push(topic);
+    } else {
+      if (description && !topic.description) topic.description = description;
+      if (finalTestThreshold !== 60 || topic.finalTestThreshold === undefined) {
+        topic.finalTestThreshold = finalTestThreshold;
+      }
     }
     return topic;
   };
 
-  const findOrCreateSubTopic = (topic: Topic, title: string, video: string): SubTopic => {
+  const findOrCreateSubTopic = (
+    topic: Topic,
+    title: string,
+    video: string,
+    order: number,
+    passingThreshold: number,
+  ): SubTopic => {
     let sub = topic.subTopics.find(s => s.title.toLowerCase() === title.toLowerCase());
     if (!sub) {
-      sub = { id: deterministicId('sub', title), title, videoUrl: video, quizzes: [] };
+      sub = {
+        id: deterministicId('sub', title),
+        title,
+        videoUrl: video || undefined,
+        order,
+        sequenceOrder: order,
+        passingThreshold,
+        quizzes: [],
+      };
       topic.subTopics.push(sub);
-    } else if (video && !sub.videoUrl) {
-      sub.videoUrl = video;
+    } else {
+      if (video && !sub.videoUrl) sub.videoUrl = video;
+      if (order) {
+        sub.order = order;
+        sub.sequenceOrder = order;
+      }
+      if (passingThreshold !== 60 || sub.passingThreshold === undefined) {
+        sub.passingThreshold = passingThreshold;
+      }
     }
     return sub;
   };
@@ -245,9 +324,19 @@ export function parseCSV(csvText: string, existingStandards: Standard[] = []): P
   const makeQuestion = (r: RawRow, rowNum: number): Question | null => {
     if (!r.question_text) return null;
 
-    const qType = (['mcq', 'boolean', 'text'].includes(r.question_type) ? r.question_type : 'mcq') as 'mcq' | 'boolean' | 'text';
+    const qType = normalizeFullQuestionType(r.question_type);
     const difficulty = (['Easy', 'Medium', 'Hard'].includes(r.difficulty) ? r.difficulty : 'Medium') as 'Easy' | 'Medium' | 'Hard';
     let options: string[] | undefined;
+    let correctAnswer = r.correct_answer;
+
+    if (r.image_url) {
+      try {
+        new URL(r.image_url);
+      } catch {
+        errors.push({ row: rowNum, column: 'image_url', message: 'image_url must be a valid URL.' });
+        return null;
+      }
+    }
 
     if (qType === 'mcq') {
       options = [r.option_a, r.option_b, r.option_c, r.option_d].filter(Boolean);
@@ -255,28 +344,37 @@ export function parseCSV(csvText: string, existingStandards: Standard[] = []): P
         errors.push({ row: rowNum, column: 'option_a', message: 'MCQ questions need at least option_a and option_b.' });
         return null;
       }
-      if (!r.correct_answer) {
+      if (!correctAnswer) {
         errors.push({ row: rowNum, column: 'correct_answer', message: 'MCQ questions require correct_answer.' });
         return null;
       }
-      if (!options.includes(r.correct_answer)) {
-        errors.push({ row: rowNum, column: 'correct_answer', message: `correct_answer "${r.correct_answer}" does not match any option.` });
+      if (!options.includes(correctAnswer)) {
+        errors.push({ row: rowNum, column: 'correct_answer', message: `correct_answer "${correctAnswer}" does not match any option.` });
         return null;
       }
-    } else if (qType === 'boolean') {
+    } else if (qType === 'true_false') {
       options = ['True', 'False'];
-      if (!['True', 'False'].includes(r.correct_answer)) {
-        errors.push({ row: rowNum, column: 'correct_answer', message: 'Boolean questions require correct_answer "True" or "False".' });
+      if (!['True', 'False'].includes(correctAnswer)) {
+        errors.push({ row: rowNum, column: 'correct_answer', message: 'True/False questions require correct_answer "True" or "False".' });
         return null;
       }
+    } else if (qType === 'text') {
+      if (!correctAnswer) {
+        errors.push({ row: rowNum, column: 'correct_answer', message: 'Short answer questions require correct_answer.' });
+        return null;
+      }
+    } else if (qType === 'image_upload') {
+      options = undefined;
+      correctAnswer = correctAnswer || undefined;
     }
 
     return {
       id: uid(),
       text: r.question_text,
       type: qType,
+      imageUrl: r.image_url || undefined,
       options,
-      correctAnswer: r.correct_answer,
+      correctAnswer,
       explanation: r.explanation,
       difficulty,
     };
@@ -297,15 +395,25 @@ export function parseCSV(csvText: string, existingStandards: Standard[] = []): P
     const r: RawRow = {
       rowIndex: ri,
       standard_name:   cascade('standard_name'),
+      standard_description: cascade('standard_description'),
       section_name:    cascade('section_name'),
+      class_passing_threshold: cascade('class_passing_threshold'),
       topic_title:     cascade('topic_title'),
       topic_sequence:  cascade('topic_sequence'),
-      prereq_title:    get(cells, 'prereq_title'),    // don't cascade – unique per row
+      topic_description: cascade('topic_description'),
+      final_test_threshold: cascade('final_test_threshold'),
+      prereq_title:    get(cells, 'prereq_title'),
       prereq_category: get(cells, 'prereq_category'),
+      prereq_description: get(cells, 'prereq_description'),
+      prereq_passing_threshold: get(cells, 'prereq_passing_threshold'),
+      prereq_max_ai_attempts: get(cells, 'prereq_max_ai_attempts'),
       subtopic_title:  cascade('subtopic_title'),
       subtopic_video:  cascade('subtopic_video'),
+      subtopic_order:  cascade('subtopic_order'),
+      subtopic_passing_threshold: cascade('subtopic_passing_threshold'),
       quiz_type:       cascade('quiz_type'),
-      question_text:   get(cells, 'question_text'),    // unique per row
+      question_text:   get(cells, 'question_text'),
+      image_url:       get(cells, 'image_url'),
       question_type:   cascade('question_type'),
       option_a:        get(cells, 'option_a'),
       option_b:        get(cells, 'option_b'),
@@ -326,8 +434,9 @@ export function parseCSV(csvText: string, existingStandards: Standard[] = []): P
       continue;
     }
 
-    const std = findOrCreateStandard(r.standard_name);
-    const cls = findOrCreateClass(std, r.section_name);
+    const classThreshold = parseThreshold(r.class_passing_threshold, 60);
+    const std = findOrCreateStandard(r.standard_name, r.standard_description);
+    const cls = findOrCreateClass(std, r.section_name, classThreshold);
 
     // ── Topic ──────────────────────────────────────────────────────────────
     if (!r.topic_title) {
@@ -338,8 +447,15 @@ export function parseCSV(csvText: string, existingStandards: Standard[] = []): P
       continue;
     }
 
-    const topicSeq = parseInt(r.topic_sequence) || defaultSequence++;
-    const topic = findOrCreateTopic(cls, r.topic_title, topicSeq);
+    const topicSeq = parseInt(r.topic_sequence, 10) || defaultSequence++;
+    const finalTestThreshold = parseThreshold(r.final_test_threshold, 60);
+    const topic = findOrCreateTopic(
+      cls,
+      r.topic_title,
+      topicSeq,
+      r.topic_description,
+      finalTestThreshold,
+    );
 
     // ── Prerequisite ──────────────────────────────────────────────────────
     if (r.prereq_title) {
@@ -349,7 +465,14 @@ export function parseCSV(csvText: string, existingStandards: Standard[] = []): P
           ? r.prereq_category
           : 'Minor') as 'Major' | 'Intermediate' | 'Minor';
         topic.prerequisites = topic.prerequisites ?? [];
-        topic.prerequisites.push({ id: uid(), title: r.prereq_title, category });
+        topic.prerequisites.push({
+          id: uid(),
+          title: r.prereq_title,
+          category,
+          description: r.prereq_description || undefined,
+          passingThreshold: parseThreshold(r.prereq_passing_threshold, 60),
+          maxAIAttempts: parsePositiveInt(r.prereq_max_ai_attempts, 3),
+        });
       }
     }
 
@@ -372,7 +495,15 @@ export function parseCSV(csvText: string, existingStandards: Standard[] = []): P
 
     // ── SubTopic ──────────────────────────────────────────────────────────
     if (r.subtopic_title) {
-      const sub = findOrCreateSubTopic(topic, r.subtopic_title, r.subtopic_video);
+      const subOrder = parseInt(r.subtopic_order, 10) || topic.subTopics.length + 1;
+      const subThreshold = parseThreshold(r.subtopic_passing_threshold, 60);
+      const sub = findOrCreateSubTopic(
+        topic,
+        r.subtopic_title,
+        r.subtopic_video,
+        subOrder,
+        subThreshold,
+      );
 
       if (qt === 'pre' || qt === 'post') {
         // pre/post quiz attached at topic level even if subtopic is set
@@ -1032,39 +1163,61 @@ export const LEVEL_COLUMN_DOCS: Record<LevelParseTarget, LevelColumnDoc[]> = {
 // ─── Template generator ───────────────────────────────────────────────────────
 
 export function generateTemplateCSV(level: ImportLevel = 'full'): string {
-  const headers = [
-    'standard_name', 'section_name', 'topic_title', 'topic_sequence',
-    'prereq_title', 'prereq_category',
-    'subtopic_title', 'subtopic_video',
-    'quiz_type', 'question_text', 'question_type',
-    'option_a', 'option_b', 'option_c', 'option_d',
-    'correct_answer', 'explanation', 'difficulty',
-  ];
+  const headers = [...FULL_TEMPLATE_HEADERS];
 
-  const quote = (s: string) => (s.includes(',') ? `"${s}"` : s);
-  const row = (cells: string[]) => cells.map(quote).join(',');
+  const quote = (s: string) => (s.includes(',') || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s);
+  const row = (cells: string[]) => {
+    while (cells.length < headers.length) cells.push('');
+    return cells.slice(0, headers.length).map(quote).join(',');
+  };
 
-  const headerRow = row(headers);
+  const headerRow = row([...headers]);
+  const blank = (n: number) => Array(n).fill('');
 
-  // Sample data rows that illustrate every kind of row
+  // One row per question type + hierarchy setup row
   const sampleRows = [
-    // Topic row with sequence
-    row(['Grade 9', 'Section A', 'Algebraic Expressions', '1', '', '', '', '', '', '', '', '', '', '', '', '', '', '']),
-    // Prerequisite rows (inherit standard/section/topic)
-    row(['', '', '', '', 'Basic Arithmetic', 'Major', '', '', '', '', '', '', '', '', '', '', '', '']),
-    row(['', '', '', '', 'Understanding Variables', 'Intermediate', '', '', '', '', '', '', '', '', '', '', '', '']),
-    // Pre-evaluation question
-    row(['', '', '', '', '', '', '', '', 'pre', 'What is 5 + 3 × 2?', 'mcq', '16', '11', '10', '13', '11', 'BODMAS: multiply first → 3×2=6 → 5+6=11', 'Easy']),
-    // Subtopic + subtopic quiz
-    row(['', '', '', '', '', '', 'Introduction to Polynomials', 'https://youtube.com/watch?v=example', 'subtopic', 'Degree of 3x²+2x-5?', 'mcq', '1', '2', '3', '0', '2', 'Highest power of x is 2.', 'Medium']),
-    // Another subtopic question (subtopic_title cascades)
-    row(['', '', '', '', '', '', '', '', '', 'Is 4x a monomial?', 'boolean', '', '', '', '', 'True', 'A monomial has exactly one term.', 'Easy']),
-    // Post-evaluation question (no subtopic needed)
-    row(['', '', '', '', '', '', '', '', 'post', 'Factorize x²-5x+6', 'mcq', '(x-2)(x-3)', '(x+2)(x+3)', '(x-1)(x-6)', '(x+1)(x-6)', '(x-2)(x-3)', 'Numbers mul to 6 and add to -5 are -2,-3.', 'Medium']),
-    // New topic, same standard/section
-    row(['', '', 'Linear Equations', '2', '', '', '', '', '', '', '', '', '', '', '', '', '', '']),
-    row(['', '', '', '', 'Algebraic Expressions', 'Major', '', '', '', '', '', '', '', '', '', '', '', '']),
-    row(['', '', '', '', '', '', 'Solving One-Variable Equations', '', 'subtopic', 'Solve 5x=25', 'mcq', '3', '4', '5', '6', '5', 'Divide both sides by 5.', 'Easy']),
+    // Topic + full hierarchy metadata (no question)
+    row([
+      'Grade 9', 'Grade 9 mathematics curriculum',
+      'Section A', '60',
+      'Algebraic Expressions', '1', 'Intro to algebra and polynomials', '60',
+      ...blank(5),
+      'Introduction to Polynomials', 'https://youtube.com/watch?v=example', '1', '60',
+      ...blank(11),
+    ]),
+    // Prerequisite
+    row([
+      ...blank(8),
+      'Basic Arithmetic', 'Major', 'Students must know addition and multiplication', '60', '3',
+      ...blank(15),
+    ]),
+    // MCQ — subtopic quiz
+    row([
+      ...blank(17),
+      'subtopic', 'What is 5 + 3 × 2?', '', 'mcq', '16', '11', '10', '13', '11', 'BODMAS: multiply first', 'Easy',
+    ]),
+    // true_false — pre-evaluation
+    row([
+      ...blank(17),
+      'pre', 'Is 4x a monomial?', '', 'true_false', '', '', '', '', 'True', 'A monomial has exactly one term.', 'Easy',
+    ]),
+    // text — final test
+    row([
+      ...blank(17),
+      'post', 'Simplify 2x + 3x', '', 'text', '', '', '', '', '5x', 'Combine like terms: 2+3=5.', 'Medium',
+    ]),
+    // image_upload — subtopic quiz with stem diagram
+    row([
+      ...blank(17),
+      'subtopic', 'Label the parts of the polynomial diagram', 'https://example.com/diagram.png', 'image_upload',
+      '', '', '', '', '', 'Upload a clear photo of your labelled diagram.', 'Medium',
+    ]),
+    // Second subtopic (inherits topic context)
+    row([
+      ...blank(13),
+      'Multiplying Polynomials', 'https://youtube.com/watch?v=example2', '2', '65',
+      ...blank(11),
+    ]),
   ];
 
   return [headerRow, ...sampleRows].join('\n');
@@ -1081,22 +1234,32 @@ export interface ColumnDoc {
 }
 
 export const COLUMN_DOCS: ColumnDoc[] = [
-  { name: 'standard_name',   required: true,  description: 'Name of the educational standard / grade.', example: 'Grade 9' },
-  { name: 'section_name',    required: true,  description: 'Name of the class/section within the standard.', example: 'Section A' },
-  { name: 'topic_title',     required: false, description: 'Name of the curriculum topic. Required to add anything below this level.', example: 'Algebraic Expressions' },
-  { name: 'topic_sequence',  required: false, description: 'Display order of the topic (integer). Defaults to row order.', example: '1' },
-  { name: 'prereq_title',    required: false, description: 'Prerequisite topic name to add to the current topic.', example: 'Basic Arithmetic' },
-  { name: 'prereq_category', required: false, description: 'Importance level of the prerequisite.', allowedValues: 'Major | Intermediate | Minor', example: 'Major' },
-  { name: 'subtopic_title',  required: false, description: 'Name of the sub-topic inside the topic.', example: 'Introduction to Polynomials' },
-  { name: 'subtopic_video',  required: false, description: 'Full YouTube URL for the sub-topic video.', example: 'https://youtube.com/watch?v=...' },
-  { name: 'quiz_type',       required: false, description: '"subtopic" → attaches question to the subtopic quiz. "pre" → pre-evaluation quiz of the topic. "post" → post-evaluation quiz.', allowedValues: 'subtopic | pre | post', example: 'pre' },
-  { name: 'question_text',   required: false, description: 'The question body text.', example: 'What is 2 + 2?' },
-  { name: 'question_type',   required: false, description: 'Type of question.', allowedValues: 'mcq | boolean | text', example: 'mcq' },
-  { name: 'option_a',        required: false, description: 'First MCQ choice.', example: '4' },
-  { name: 'option_b',        required: false, description: 'Second MCQ choice.', example: '3' },
-  { name: 'option_c',        required: false, description: 'Third MCQ choice (optional).', example: '5' },
-  { name: 'option_d',        required: false, description: 'Fourth MCQ choice (optional).', example: '6' },
-  { name: 'correct_answer',  required: false, description: 'Exact text of the correct answer (must match an option for MCQ or "True"/"False" for boolean).', example: '4' },
-  { name: 'explanation',     required: false, description: 'Explanation shown to students after answering.', example: 'Because 2+2 equals 4.' },
-  { name: 'difficulty',      required: false, description: 'Difficulty level of the question.', allowedValues: 'Easy | Medium | Hard', example: 'Easy' },
+  { name: 'standard_name', required: true, description: 'Name of the educational standard / grade.', example: 'Grade 9' },
+  { name: 'standard_description', required: false, description: 'Optional description for the standard.', example: 'Grade 9 mathematics curriculum' },
+  { name: 'section_name', required: true, description: 'Name of the class/section within the standard.', example: 'Section A' },
+  { name: 'class_passing_threshold', required: false, description: 'Passing percentage for the class (0–100). Default: 60.', example: '60' },
+  { name: 'topic_title', required: false, description: 'Name of the curriculum topic. Required to add subtopics/questions/prerequisites.', example: 'Algebraic Expressions' },
+  { name: 'topic_sequence', required: false, description: 'Display order of the topic (integer). Defaults to row order.', example: '1' },
+  { name: 'topic_description', required: false, description: 'Optional description for the topic.', example: 'Intro to algebra and polynomials' },
+  { name: 'final_test_threshold', required: false, description: 'Passing percentage for the topic final test (0–100). Default: 60.', example: '60' },
+  { name: 'prereq_title', required: false, description: 'Prerequisite name to add to the current topic.', example: 'Basic Arithmetic' },
+  { name: 'prereq_category', required: false, description: 'Importance level (stored for reference; not in Firestore).', allowedValues: 'Major | Intermediate | Minor', example: 'Major' },
+  { name: 'prereq_description', required: false, description: 'Description for the prerequisite.', example: 'Students must know basic operations' },
+  { name: 'prereq_passing_threshold', required: false, description: 'Passing percentage for the prerequisite quiz (0–100). Default: 60.', example: '60' },
+  { name: 'prereq_max_ai_attempts', required: false, description: 'Max AI tutor attempts allowed (1–10). Default: 3.', example: '3' },
+  { name: 'subtopic_title', required: false, description: 'Name of the sub-topic inside the topic.', example: 'Introduction to Polynomials' },
+  { name: 'subtopic_video', required: false, description: 'Full YouTube URL for the sub-topic lesson video.', example: 'https://youtube.com/watch?v=...' },
+  { name: 'subtopic_order', required: false, description: 'Display order of the sub-topic. Default: auto-increment.', example: '1' },
+  { name: 'subtopic_passing_threshold', required: false, description: 'Passing percentage for the sub-topic quiz (0–100). Default: 60.', example: '60' },
+  { name: 'quiz_type', required: false, description: 'Where to attach the question.', allowedValues: 'subtopic | pre | post', example: 'subtopic' },
+  { name: 'question_text', required: false, description: 'The question body (supports $math$).', example: 'What is 2 + 2?' },
+  { name: 'image_url', required: false, description: 'Optional image URL shown with the question (diagram / formula).', example: 'https://example.com/diagram.png' },
+  { name: 'question_type', required: false, description: 'Question format. "boolean" in CSV is accepted as alias for true_false.', allowedValues: 'mcq | true_false | text | image_upload', example: 'mcq' },
+  { name: 'option_a', required: false, description: 'First MCQ choice.', example: '4' },
+  { name: 'option_b', required: false, description: 'Second MCQ choice.', example: '3' },
+  { name: 'option_c', required: false, description: 'Third MCQ choice (optional).', example: '5' },
+  { name: 'option_d', required: false, description: 'Fourth MCQ choice (optional).', example: '6' },
+  { name: 'correct_answer', required: false, description: 'MCQ: must exactly match an option. true_false: True or False. text: accepted answer. image_upload: optional rubric note.', example: '4' },
+  { name: 'explanation', required: false, description: 'Explanation shown after answering.', example: 'Because 2+2 equals 4.' },
+  { name: 'difficulty', required: false, description: 'Difficulty level.', allowedValues: 'Easy | Medium | Hard', example: 'Easy' },
 ];

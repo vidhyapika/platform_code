@@ -1,0 +1,26 @@
+{
+  "name": "vidhyapika-voice-agent",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.ts dev",
+    "build": "tsc",
+    "start": "tsx src/index.ts start",
+    "test": "tsx src/agent/speech/prepareSpokenText.test.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^1.29.0",
+    "@livekit/agents": "^1.4.2",
+    "@livekit/agents-plugin-deepgram": "^1.4.2",
+    "@livekit/agents-plugin-google": "^1.4.2",
+    "@livekit/agents-plugin-silero": "^1.4.2",
+    "dotenv": "^17.2.3",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2"
+  }
+}

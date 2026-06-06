@@ -15,6 +15,10 @@ import {
   listQuestions,
 } from "../repositories/curriculumRepo";
 import { upsertTopicProgress, upsertSubTopicProgress, saveQuizAttempt } from "../repositories/progressRepo";
+import {
+  createDirectThreadWithMessage,
+  createGroupThread,
+} from "../repositories/messageRepo";
 
 const DEMO_KEY = "demo:v1";
 
@@ -390,6 +394,23 @@ export async function bootstrapDemoData(): Promise<DemoBootstrapResult> {
     finalTestStatus: "passed",
     finalTestAttemptCount: 1,
     completedAt: new Date() as any,
+  });
+
+  await createDirectThreadWithMessage({
+    studentId,
+    createdBy: adminId,
+    body: "Welcome to the Vidhyapika demo! Reply here if you have questions.",
+    senderId: adminId,
+    senderRole: "admin",
+  });
+
+  await createGroupThread({
+    audience: { type: "class", classId },
+    title: "Demo class announcement",
+    createdBy: adminId,
+    initialBody: "This group thread is for everyone in your demo class. Students can reply here.",
+    senderId: adminId,
+    senderRole: "admin",
   });
 
   await db.collection("demoMeta").doc(DEMO_KEY).set({

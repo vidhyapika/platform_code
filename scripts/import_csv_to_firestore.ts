@@ -10,22 +10,63 @@ import {
   listQuestions, createQuestion
 } from '../backend/repositories/curriculumRepo';
 
+type ApiQuestionType = 'mcq' | 'true_false' | 'text' | 'image_upload';
+
+function toApiQuestionType(type: string): ApiQuestionType {
+  if (type === 'boolean') return 'true_false';
+  if (type === 'mcq' || type === 'true_false' || type === 'text' || type === 'image_upload') {
+    return type;
+  }
+  return 'mcq';
+}
+
+function buildQuestionPayload(q: {
+  text: string;
+  type: string;
+  imageUrl?: string;
+  options?: string[];
+  correctAnswer?: string;
+  explanation?: string;
+  difficulty?: string;
+  order: number;
+}, contextType: 'subtopic' | 'prereq' | 'finaltest', contextId: string) {
+  const qType = toApiQuestionType(q.type);
+  return {
+    contextType,
+    contextId,
+    text: q.text,
+    type: qType,
+    imageUrl: q.imageUrl || null,
+    options: q.options ?? (qType === 'true_false' ? ['True', 'False'] : null),
+    correctAnswer: q.correctAnswer ?? null,
+    explanation: q.explanation ?? '',
+    difficulty: (q.difficulty as 'Easy' | 'Medium' | 'Hard') || 'Medium',
+    order: q.order,
+  };
+}
+
 async function run() {
   console.log('Reading CSV...');
   const csvPath = process.argv[2];
   if (!csvPath) throw new Error('Please provide a path to the CSV file.');
   
   let csvText = fs.readFileSync(csvPath, 'utf8');
-  
-  // Replace headers to match what parseCSV expects
+
+  // Legacy CSVs used friendly headers (Standard, Section) and omitted question_type.
+  // Canonical template exports already use standard_name + full 18 columns.
   const lines = csvText.replace(/\r\n/g, '\n').split('\n');
-  lines[0] = lines[0].replace(/Standard/i, 'standard_name').replace(/Section/i, 'section_name') + ',question_type';
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i].trim() !== '') {
-      lines[i] = lines[i] + ',text';
+  const headerLine = lines[0] ?? '';
+  if (!/standard_name/i.test(headerLine)) {
+    lines[0] = headerLine
+      .replace(/Standard/i, 'standard_name')
+      .replace(/Section/i, 'section_name') + ',question_type';
+    for (let i = 1; i < lines.length; i++) {
+      if (lines[i].trim() !== '') {
+        lines[i] = lines[i] + ',text';
+      }
     }
+    csvText = lines.join('\n');
   }
-  csvText = lines.join('\n');
   
   console.log('Fetching existing standards to merge against...');
   const existingStandards = await listStandards();
@@ -47,7 +88,11 @@ async function run() {
     let dbStd = existingStandards.find(s => s.name.toLowerCase() === std.name.toLowerCase());
     let stdId = dbStd?.id;
     if (!stdId) {
-      stdId = await createStandard({ name: std.name, order: existingStandards.length + 1 });
+      stdId = await createStandard({
+        name: std.name,
+        description: std.description,
+        order: existingStandards.length + 1,
+      });
       console.log(`  -> Created Standard ID: ${stdId}`);
     }
 
@@ -57,7 +102,11 @@ async function run() {
       let dbCls = existingClasses.find(c => c.name.toLowerCase() === cls.name.toLowerCase());
       let clsId = dbCls?.id;
       if (!clsId) {
-        clsId = await createClass({ name: cls.name, standardId: stdId, passingThreshold: 60 });
+        clsId = await createClass({
+          name: cls.name,
+          standardId: stdId,
+          passingThreshold: cls.passingThreshold ?? 60,
+        });
         console.log(`    -> Created Class ID: ${clsId}`);
       }
 
@@ -71,7 +120,8 @@ async function run() {
             name: topic.title,
             classId: clsId,
             order: topic.sequence || existingTopics.length + 1,
-            finalTestThreshold: 60
+            description: topic.description,
+            finalTestThreshold: topic.finalTestThreshold ?? 60,
           });
           console.log(`      -> Created Topic ID: ${topicId}`);
         }
@@ -83,8 +133,9 @@ async function run() {
             if (!existingPrereqs.some(p => p.name.toLowerCase() === prereq.title.toLowerCase())) {
               await createPrerequisite(topicId, {
                 name: prereq.title,
-                passingThreshold: prereq.passingThreshold || 60,
-                maxAIAttempts: 3
+                description: prereq.description,
+                passingThreshold: prereq.passingThreshold ?? 60,
+                maxAIAttempts: prereq.maxAIAttempts ?? 3,
               });
               console.log(`        -> Created Prereq: ${prereq.title}`);
             }
@@ -100,9 +151,9 @@ async function run() {
             subId = await createSubTopic({
               name: sub.title,
               topicId: topicId,
-              order: sub.sequenceOrder || existingSubTopics.length + 1,
+              order: sub.order ?? sub.sequenceOrder ?? existingSubTopics.length + 1,
               youtubeUrl: sub.videoUrl,
-              passingThreshold: 60
+              passingThreshold: sub.passingThreshold ?? 60,
             });
             console.log(`        -> Created SubTopic: ${sub.title}`);
           }
@@ -112,16 +163,13 @@ async function run() {
             const existingQs = await listQuestions('subtopic', subId);
             for (const q of sub.quizzes) {
               if (!existingQs.some(eq => eq.text.toLowerCase() === q.text.toLowerCase())) {
-                await createQuestion({
-                  contextType: 'subtopic',
-                  contextId: subId,
-                  text: q.text,
-                  type: q.type as any,
-                  options: q.options || [],
-                  correctAnswer: q.correctAnswer,
-                  explanation: q.explanation,
-                  order: existingQs.length + 1
-                } as any);
+                await createQuestion(
+                  buildQuestionPayload(
+                    { ...q, order: existingQs.length + 1 },
+                    'subtopic',
+                    subId,
+                  ) as any,
+                );
                 console.log(`          -> Created Question for ${sub.title}`);
               }
             }
@@ -137,16 +185,13 @@ async function run() {
           // I will store preEvaluationQuiz as 'prereq' contextType but contextId = topicId. This is what the UI does in listQuestions.
           for (const q of topic.preEvaluationQuiz) {
              if (!existingQs.some(eq => eq.text.toLowerCase() === q.text.toLowerCase())) {
-                await createQuestion({
-                  contextType: 'prereq', // wait, pre-eval
-                  contextId: topicId,
-                  text: q.text,
-                  type: q.type as any,
-                  options: q.options || [],
-                  correctAnswer: q.correctAnswer,
-                  explanation: q.explanation,
-                  order: existingQs.length + 1
-                } as any);
+                await createQuestion(
+                  buildQuestionPayload(
+                    { ...q, order: existingQs.length + 1 },
+                    'prereq',
+                    topicId,
+                  ) as any,
+                );
                 console.log(`          -> Created Pre-Eval Question for ${topic.title}`);
              }
           }
@@ -157,16 +202,13 @@ async function run() {
           const existingQs = await listQuestions('finaltest', topicId);
           for (const q of topic.postEvaluationQuiz) {
              if (!existingQs.some(eq => eq.text.toLowerCase() === q.text.toLowerCase())) {
-                await createQuestion({
-                  contextType: 'finaltest',
-                  contextId: topicId,
-                  text: q.text,
-                  type: q.type as any,
-                  options: q.options || [],
-                  correctAnswer: q.correctAnswer,
-                  explanation: q.explanation,
-                  order: existingQs.length + 1
-                } as any);
+                await createQuestion(
+                  buildQuestionPayload(
+                    { ...q, order: existingQs.length + 1 },
+                    'finaltest',
+                    topicId,
+                  ) as any,
+                );
                 console.log(`          -> Created FinalTest Question for ${topic.title}`);
              }
           }
