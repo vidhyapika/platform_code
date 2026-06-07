@@ -21,7 +21,7 @@ export function LandingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F8F9FA] text-slate-800">
+    <main className="min-h-screen bg-[#F8F9FA] text-slate-800">
       <LandingHeader />
       <LandingHero />
       <LandingFeatures />
@@ -30,6 +30,6 @@ export function LandingPage() {
       <LandingTestimonials />
       <LandingCTA />
       <LandingFooter />
-    </div>
+    </main>
   );
 }
