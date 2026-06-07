@@ -13,6 +13,17 @@ function getFrom(): string {
   return process.env.RESEND_FROM || "Vidhyapika <onboarding@resend.dev>";
 }
 
+function getAppUrl(): string {
+  return (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
+}
+
+export function getLoginUrlForRole(role: string): string {
+  const base = getAppUrl();
+  if (role === "parent") return `${base}/parent/login`;
+  if (role === "admin") return `${base}/admin/login`;
+  return `${base}/login`;
+}
+
 async function sendEmail(to: string, subject: string, html: string): Promise<void> {
   const resend = getResend();
   if (!resend) {
@@ -32,6 +43,31 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
   }
 }
 
+function buildEnrollmentHtml(params: {
+  recipientName: string;
+  className: string;
+  loginEmail: string;
+  tempPassword: string;
+}): string {
+  const { recipientName, className, loginEmail, tempPassword } = params;
+  return `
+    <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
+      <h2 style="color:#4F46E5;">Welcome to ${className}!</h2>
+      <p>Dear ${recipientName},</p>
+      <p>You have been successfully enrolled in <strong>${className}</strong> on Vidhyapika, your AI-powered math learning platform.</p>
+      <h3>Login Credentials</h3>
+      <table style="border-collapse:collapse;width:100%;">
+        <tr><td style="padding:8px;border:1px solid #e5e7eb;background:#f9fafb;"><strong>Login Email</strong></td>
+            <td style="padding:8px;border:1px solid #e5e7eb;">${loginEmail}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #e5e7eb;background:#f9fafb;"><strong>Temporary Password</strong></td>
+            <td style="padding:8px;border:1px solid #e5e7eb;font-family:monospace;">${tempPassword}</td></tr>
+      </table>
+      <p style="color:#EF4444;"><strong>Important:</strong> You must change this password on your first login.</p>
+      <p>Best regards,<br/><strong>Vidhyapika Team</strong></p>
+    </div>
+  `;
+}
+
 export async function sendEnrollmentNotifications(params: {
   studentName: string;
   studentEmail?: string;
@@ -41,34 +77,47 @@ export async function sendEnrollmentNotifications(params: {
   parentPhone?: string;
   className: string;
   tempPassword: string;
+  parentTempPassword?: string;
 }): Promise<string[]> {
-  const { studentName, studentEmail, parentName, parentEmail, className, tempPassword } = params;
+  const {
+    studentName,
+    studentEmail,
+    parentName,
+    parentEmail,
+    className,
+    tempPassword,
+    parentTempPassword,
+  } = params;
 
   const subject = `Welcome to ${className} — Vidhyapika`;
-  const html = `
-    <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
-      <h2 style="color:#4F46E5;">Welcome to ${className}!</h2>
-      <p>Dear ${studentName} and ${parentName},</p>
-      <p>You have been successfully enrolled in <strong>${className}</strong> on Vidhyapika, your AI-powered math learning platform.</p>
-      <h3>Login Credentials</h3>
-      <table style="border-collapse:collapse;width:100%;">
-        <tr><td style="padding:8px;border:1px solid #e5e7eb;background:#f9fafb;"><strong>Temporary Password</strong></td>
-            <td style="padding:8px;border:1px solid #e5e7eb;font-family:monospace;">${tempPassword}</td></tr>
-      </table>
-      <p style="color:#EF4444;"><strong>Important:</strong> You must change this password on your first login.</p>
-      <p>Best regards,<br/><strong>Vidhyapika Team</strong></p>
-    </div>
-  `;
 
   const results: string[] = [];
   const targets = [
-    { email: studentEmail, label: "student" },
-    { email: parentEmail, label: "parent" },
+    {
+      email: studentEmail,
+      label: "student",
+      name: studentName,
+      loginEmail: studentEmail,
+      password: tempPassword,
+    },
+    {
+      email: parentEmail,
+      label: "parent",
+      name: parentName || "Parent",
+      loginEmail: parentEmail,
+      password: parentTempPassword ?? tempPassword,
+    },
   ];
 
-  for (const { email, label } of targets) {
-    if (!email) continue;
+  for (const { email, label, name, loginEmail, password } of targets) {
+    if (!email || !loginEmail) continue;
     try {
+      const html = buildEnrollmentHtml({
+        recipientName: name,
+        className,
+        loginEmail,
+        tempPassword: password,
+      });
       await sendEmail(email, subject, html);
       results.push(`Enrollment email sent to ${label} (${email}).`);
     } catch (e: any) {
@@ -119,16 +168,25 @@ export async function sendPasswordResetEmail(params: {
   email: string;
   name: string;
   tempPassword: string;
+  role?: string;
+  loginUrl?: string;
 }): Promise<void> {
-  const { email, name, tempPassword } = params;
+  const { email, name, tempPassword, role } = params;
+  const loginUrl = params.loginUrl ?? getLoginUrlForRole(role ?? "student");
   const subject = "Vidhyapika — Password Reset";
   const html = `
     <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
       <h2 style="color:#4F46E5;">Password Reset</h2>
       <p>Hi ${name},</p>
-      <p>Your password has been reset. Use the temporary password below to log in, then change it immediately.</p>
-      <p style="font-family:monospace;font-size:1.2em;background:#f3f4f6;padding:12px;border-radius:6px;">${tempPassword}</p>
-      <p style="color:#EF4444;"><strong>This password expires after first use.</strong></p>
+      <p>Your password has been reset. Use the credentials below to log in, then change your password immediately.</p>
+      <table style="border-collapse:collapse;width:100%;margin:16px 0;">
+        <tr><td style="padding:8px;border:1px solid #e5e7eb;background:#f9fafb;"><strong>Login Email</strong></td>
+            <td style="padding:8px;border:1px solid #e5e7eb;">${email}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #e5e7eb;background:#f9fafb;"><strong>Temporary Password</strong></td>
+            <td style="padding:8px;border:1px solid #e5e7eb;font-family:monospace;">${tempPassword}</td></tr>
+      </table>
+      <p><a href="${loginUrl}" style="color:#4F46E5;font-weight:bold;">Sign in to Vidhyapika</a></p>
+      <p style="color:#EF4444;"><strong>Important:</strong> You must change this password on your first login.</p>
       <p>Best regards,<br/><strong>Vidhyapika Team</strong></p>
     </div>
   `;

@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { verifyJWT, requireAuth } from "../../../../../backend/middleware/auth";
 import {
   listQuestionsForStudent,
@@ -20,6 +21,23 @@ import { sendFlaggedAlert } from "../../../../../backend/services/notifications"
 import { evaluateSubjectiveAnswer } from "../../../../../backend/services/ai";
 import type { Question } from "../../../../../backend/repositories/curriculumRepo";
 import { z } from "zod";
+
+function scheduleFlaggedAlert(params: {
+  studentName: string;
+  studentEmail: string;
+  topicName: string;
+  subTopicName?: string;
+  flagType: string;
+  attemptCount: number;
+}) {
+  const adminEmail = process.env.ADMIN_EMAIL ?? process.env.ADMIN_LOGIN_EMAIL;
+  if (!adminEmail) return;
+  after(() => {
+    void sendFlaggedAlert({ adminEmail, ...params }).catch((e) => {
+      console.error("[quiz/submit] flagged alert failed:", e);
+    });
+  });
+}
 
 function normalizeAnswer(s: string): string {
   return s.toLowerCase().trim();
@@ -231,16 +249,14 @@ export async function POST(req: Request) {
         contentUnlocked = true;
         const student = await getUserById(studentId);
         const topic = await getTopic(topicId);
-        const adminEmail = process.env.ADMIN_EMAIL;
-        if (adminEmail && student && topic) {
-          sendFlaggedAlert({
-            adminEmail,
+        if (student && topic) {
+          scheduleFlaggedAlert({
             studentName: student.name ?? student.email,
             studentEmail: student.email,
             topicName: topic.name,
             flagType: "Prerequisite Test",
             attemptCount: MAX_AI_COACHING_CYCLES,
-          }).catch(console.error);
+          });
         }
       } else if (!prereqEverCleared) {
         await upsertTopicProgress(studentId, topicId, {
@@ -288,17 +304,15 @@ export async function POST(req: Request) {
         const student = await getUserById(studentId);
         const topic = await getTopic(topicId);
         const subTopic = await getSubTopic(effectiveSubTopicId);
-        const adminEmail = process.env.ADMIN_EMAIL;
-        if (adminEmail && student && topic) {
-          sendFlaggedAlert({
-            adminEmail,
+        if (student && topic) {
+          scheduleFlaggedAlert({
             studentName: student.name ?? student.email,
             studentEmail: student.email,
             topicName: topic.name,
             subTopicName: subTopic?.name,
             flagType: "Sub-Topic Quiz",
             attemptCount: MAX_AI_COACHING_CYCLES,
-          }).catch(console.error);
+          });
         }
       } else if (!quizEverCleared) {
         await upsertSubTopicProgress(studentId, effectiveSubTopicId, topicId, {
@@ -347,16 +361,14 @@ export async function POST(req: Request) {
         flagged = true;
         const student = await getUserById(studentId);
         const topic = await getTopic(topicId);
-        const adminEmail = process.env.ADMIN_EMAIL;
-        if (adminEmail && student && topic) {
-          sendFlaggedAlert({
-            adminEmail,
+        if (student && topic) {
+          scheduleFlaggedAlert({
             studentName: student.name ?? student.email,
             studentEmail: student.email,
             topicName: topic.name,
             flagType: "Final Test",
             attemptCount: MAX_AI_COACHING_CYCLES,
-          }).catch(console.error);
+          });
         }
       } else if (!finalEverCleared) {
         await upsertTopicProgress(studentId, topicId, {

@@ -14,6 +14,8 @@ const EnvSchema = z.object({
   JWT_ISSUER: z.string().min(1).default("vidhyapika"),
   JWT_AUDIENCE: z.string().min(1).default("vidhyapika-web"),
 
+  APP_URL: z.string().url().default("http://localhost:3000"),
+
   // Email (Resend)
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM: z.string().optional(),

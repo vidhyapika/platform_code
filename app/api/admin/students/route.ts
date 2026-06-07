@@ -1,4 +1,5 @@
 export const dynamic = 'force-dynamic';
+import { after } from "next/server";
 import { verifyJWT, requireAdmin } from "../../../../backend/middleware/auth";
 import { listUsersByRole, createUser } from "../../../../backend/repositories/userRepo";
 import { hashPassword } from "../../../../backend/services/auth";
@@ -107,8 +108,9 @@ export async function POST(req: Request) {
     }
 
     let parentId: string | null = null;
+    let parentTempPw: string | undefined;
     if (body.parentEmail) {
-      const parentTempPw = generateTempPassword();
+      parentTempPw = generateTempPassword();
       const parentHash = await hashPassword(parentTempPw);
       parentId = await createUser({
         email: body.parentEmail,
@@ -118,29 +120,25 @@ export async function POST(req: Request) {
         mustResetPassword: true,
         parentId: studentId,
       });
-
     }
 
-    // Send welcome emails in the background — do not await email send or the admin waits several seconds.
     if (body.sendEmail) {
-      const emailPromise = body.parentEmail
-        ? sendEnrollmentNotifications({
-            studentName: body.name,
-            studentEmail: body.email,
-            parentName: body.parentName ?? "",
-            parentEmail: body.parentEmail,
-            className: "your enrolled classes",
-            tempPassword,
+      after(() => {
+        void sendEnrollmentNotifications({
+          studentName: body.name,
+          studentEmail: body.email,
+          parentName: body.parentName ?? "",
+          parentEmail: body.parentEmail || undefined,
+          className: "your enrolled classes",
+          tempPassword,
+          parentTempPassword: parentTempPw,
+        })
+          .then((results) => {
+            console.log("[POST /api/admin/students] enrollment emails:", results);
           })
-        : sendEnrollmentNotifications({
-            studentName: body.name,
-            studentEmail: body.email,
-            parentName: "",
-            className: "your enrolled classes",
-            tempPassword,
+          .catch((err) => {
+            console.error("[POST /api/admin/students] enrollment email failed:", err);
           });
-      void emailPromise.catch((err) => {
-        console.error("[POST /api/admin/students] enrollment email failed:", err);
       });
     }
 
