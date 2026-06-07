@@ -7,7 +7,7 @@ import { ThresholdSlider } from '../../components/ui/ThresholdSlider';
 import { InlineMath, BlockMath } from 'react-katex';
 import 'katex/dist/katex.min.css';
 import { 
-  Plus, Edit2, Trash2, ChevronRight, 
+  Plus, Edit2, Trash2, ChevronRight, ChevronUp, ChevronDown,
   BookOpen, Layers, ListTree, AlertTriangle, Calculator,
   Video, HelpCircle, FileText, ArrowLeft, PlayCircle, CheckCircle2,
   Network, ClipboardCheck, X, BarChart2, Trophy, Sparkles,
@@ -37,12 +37,18 @@ type Question = {
   imageUrl?: string | null;
   options?: string[];
   correctAnswer?: string | null;
+  alternativeAnswers?: string[];
   explanation?: string;
   difficulty?: 'Easy' | 'Medium' | 'Hard';
   contextType?: string;
   contextId?: string;
   order?: number;
 };
+
+function parseAlternativeAnswers(input: string | undefined): string[] {
+  if (!input?.trim()) return [];
+  return input.split(',').map(s => s.trim()).filter(Boolean);
+}
 
 // ─── Math renderer ────────────────────────────────────────────────────────────
 
@@ -374,7 +380,14 @@ export function AdminCurriculum() {
   const loadTopics = useCallback(async (classId: string) => {
     setLoadingTop(true);
     const { data } = await apiFetch<{ topics: ApiTopic[] }>(`/api/admin/classes/${classId}/topics`);
-    setTopicsMap(m => ({ ...m, [classId]: data?.topics ?? [] }));
+    const topics = data?.topics ?? [];
+    setTopicsMap(m => ({ ...m, [classId]: topics }));
+    await Promise.all(
+      topics.map(async (t) => {
+        const { data: st } = await apiFetch<{ subTopics: ApiSubTopic[] }>(`/api/admin/topics/${t.id}/subtopics`);
+        setSubTopicsMap(m => ({ ...m, [t.id]: st?.subTopics ?? [] }));
+      })
+    );
     setLoadingTop(false);
   }, []);
 
@@ -441,6 +454,7 @@ export function AdminCurriculum() {
       setFormData({ 
         ...payload,
         optionsArray: payload?.options?.length ? [...payload.options] : ['', '', '', ''],
+        alternativeAnswersText: (payload?.alternativeAnswers ?? []).join(', '),
       });
     } else if (type === 'add-topic') {
       setFormData({ order: (currentTopics.length) + 1 });
@@ -599,16 +613,27 @@ export function AdminCurriculum() {
           ? (formData.optionsArray ?? []).filter((o: string) => o.trim() !== '')
           : qType === 'true_false' ? ['True', 'False'] : undefined;
 
+        const existingQuestions = questionsMap[`${contextType}:${contextId}`] ?? [];
+        const maxOrder = existingQuestions.reduce((max, q) => Math.max(max, q.order ?? 0), 0);
+        const order = type.startsWith('edit-')
+          ? (formData.order ?? payload?.order ?? 0)
+          : (formData.order != null ? Number(formData.order) : maxOrder + 1);
+
+        const alternativeAnswers = qType === 'text'
+          ? parseAlternativeAnswers(formData.alternativeAnswersText)
+          : [];
+
         const body = {
           contextType, contextId,
           text: formData.text,
           type: qType,
           options: options ?? null,
           correctAnswer: formData.correctAnswer ?? null,
+          alternativeAnswers,
           imageUrl: formData.imageUrl?.trim() || null,
           difficulty: formData.difficulty ?? 'Medium',
           explanation: formData.explanation ?? '',
-          order: formData.order ?? 0,
+          order,
         };
 
         if (type.startsWith('edit-')) {
@@ -625,6 +650,24 @@ export function AdminCurriculum() {
       setSaveError(err.message);
     }
     setSaving(false);
+  };
+
+  const handleMoveQuestion = async (
+    quiz: Question,
+    direction: 'up' | 'down',
+    questions: Question[],
+    contextType: string,
+    contextId: string,
+  ) => {
+    const idx = questions.findIndex(q => q.id === quiz.id);
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= questions.length) return;
+    const other = questions[swapIdx];
+    const myOrder = quiz.order ?? idx + 1;
+    const otherOrder = other.order ?? swapIdx + 1;
+    await apiFetch(`/api/admin/questions/${quiz.id}`, { method: 'PUT', body: JSON.stringify({ order: otherOrder }) });
+    await apiFetch(`/api/admin/questions/${other.id}`, { method: 'PUT', body: JSON.stringify({ order: myOrder }) });
+    await loadQuestions(contextType, contextId);
   };
 
   // ── Delete ─────────────────────────────────────────────────────────────────
@@ -700,6 +743,7 @@ export function AdminCurriculum() {
         imageUrl: it.imageUrl ?? it.image_url ?? null,
         difficulty: it.difficulty ?? 'Medium',
         explanation: it.explanation ?? '',
+        alternativeAnswers: it.alternativeAnswers ?? it.alternative_answers ?? [],
         order: Number(it.order ?? i),
       };
     });
@@ -880,9 +924,33 @@ export function AdminCurriculum() {
 
   // ── Quiz card ─────────────────────────────────────────────────────────────────
 
-  const renderQuizCard = (quiz: Question, index: number, editType: string, deleteType: string) => (
+  const renderQuizCard = (
+    quiz: Question,
+    index: number,
+    editType: string,
+    deleteType: string,
+    reorderCtx?: { questions: Question[]; contextType: string; contextId: string },
+  ) => (
     <div key={quiz.id} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm relative group">
       <div className="absolute top-5 right-5 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        {reorderCtx && (
+          <>
+            <button
+              type="button"
+              disabled={index === 0}
+              onClick={() => void handleMoveQuestion(quiz, 'up', reorderCtx.questions, reorderCtx.contextType, reorderCtx.contextId)}
+              className="p-2 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg disabled:opacity-30"
+              title="Move up"
+            ><ChevronUp className="w-4 h-4" /></button>
+            <button
+              type="button"
+              disabled={index === reorderCtx.questions.length - 1}
+              onClick={() => void handleMoveQuestion(quiz, 'down', reorderCtx.questions, reorderCtx.contextType, reorderCtx.contextId)}
+              className="p-2 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg disabled:opacity-30"
+              title="Move down"
+            ><ChevronDown className="w-4 h-4" /></button>
+          </>
+        )}
         <button onClick={() => openModal(editType, quiz)} className="p-2 bg-slate-100 text-slate-600 hover:bg-blue-100 hover:text-blue-700 rounded-lg"><Edit2 className="w-4 h-4" /></button>
         <button onClick={() => openModal('delete-confirm', { itemType: deleteType, id: quiz.id, name: 'Question' })} className="p-2 bg-slate-100 text-slate-600 hover:bg-red-100 hover:text-red-700 rounded-lg"><Trash2 className="w-4 h-4" /></button>
       </div>
@@ -930,6 +998,16 @@ export function AdminCurriculum() {
           <div>
             <span className="text-[10px] font-bold text-green-700 uppercase tracking-widest block mb-0.5">Accepted Answer</span>
             <span className="font-medium text-green-900 text-sm"><MathText text={quiz.correctAnswer} /></span>
+            {(quiz.alternativeAnswers ?? []).length > 0 && (
+              <div className="mt-2">
+                <span className="text-[10px] font-bold text-green-600 uppercase tracking-widest block mb-0.5">Also accepted</span>
+                <span className="font-medium text-green-800 text-sm">
+                  {(quiz.alternativeAnswers ?? []).map((alt, i) => (
+                    <span key={i}>{i > 0 ? ', ' : ''}<MathText text={alt} /></span>
+                  ))}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1043,7 +1121,7 @@ export function AdminCurriculum() {
             <p className="text-slate-500 mb-6 max-w-md mx-auto">Create questions for this prerequisite test.</p>
         </div>
       ) : (
-          <div className="space-y-4">{questions.map((q, i) => renderQuizCard(q, i, 'edit-preeval-quiz', 'preeval-quiz'))}</div>
+          <div className="space-y-4">{questions.map((q, i) => renderQuizCard(q, i, 'edit-preeval-quiz', 'preeval-quiz', { questions, contextType: 'prereq', contextId: selectedPrereqId ?? '' }))}</div>
         )}
         <LevelImportPanel target="questions" accent="orange" contextLabel={selectedPrereq.name} onImport={makeImportQuestions('prereq', selectedPrereq.id)} />
     </div>
@@ -1086,7 +1164,7 @@ export function AdminCurriculum() {
             <button onClick={() => openModal('add-finaltest-quiz')} className="px-6 py-3 bg-amber-600 text-white rounded-xl font-bold hover:bg-amber-700 transition-colors shadow-sm">Create First Question</button>
               </div>
         ) : (
-          <div className="space-y-4">{finalTestQuestions.map((q, i) => renderQuizCard(q, i, 'edit-finaltest-quiz', 'finaltest-quiz'))}</div>
+          <div className="space-y-4">{finalTestQuestions.map((q, i) => renderQuizCard(q, i, 'edit-finaltest-quiz', 'finaltest-quiz', { questions: finalTestQuestions, contextType: 'finaltest', contextId: selection.topicId }))}</div>
         )}
         {!showAnalytics && <LevelImportPanel target="questions" accent="orange" contextLabel={`Final Test — ${currentTopic?.name}`} onImport={makeImportQuestions('finaltest', selection.topicId)} />}
               </div>
@@ -1147,7 +1225,12 @@ export function AdminCurriculum() {
               )}
               </div>
             ))}
-          {currentSubTopics.length === 0 && !loadingSub && <p className="py-6 text-center text-slate-500 text-sm">No sub-topics yet.</p>}
+          {currentSubTopics.length === 0 && !loadingSub && (
+            <div className="py-6 text-center text-slate-500 text-sm space-y-1">
+              <p>No sub-topics yet.</p>
+              <p className="text-xs text-slate-400">Import subtopics via CSV or use Add Sub-topic.</p>
+            </div>
+          )}
           <button onClick={() => openModal('add-subtopic')} className="w-full py-2.5 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 mt-1">
               <Plus className="w-4 h-4" /> Add Sub-topic
             </button>
@@ -1252,7 +1335,7 @@ export function AdminCurriculum() {
                 <button onClick={() => openModal('add-quiz')} className="px-6 py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 shadow-sm">Create First Question</button>
                   </div>
                 ) : (
-              <div className="space-y-4">{subtopicQuestions.map((q, i) => renderQuizCard(q, i, 'edit-quiz', 'quiz'))}</div>
+              <div className="space-y-4">{subtopicQuestions.map((q, i) => renderQuizCard(q, i, 'edit-quiz', 'quiz', { questions: subtopicQuestions, contextType: 'subtopic', contextId: selection.subtopicId }))}</div>
             )}
             <LevelImportPanel target="questions" accent="emerald" contextLabel={currentSubtopic.name} onImport={makeImportQuestions('subtopic', selection.subtopicId)} />
               </div>
@@ -1443,6 +1526,7 @@ function QuizForm({ formData, setFormData, onSubmit, saving, saveError, onCancel
 }) {
   const qType: string = formData.type ?? 'mcq';
   const [mathPreview, setMathPreview] = useState(false);
+  const [explanationPreview, setExplanationPreview] = useState(false);
 
   const set = (key: string, val: any) => setFormData({ ...formData, [key]: val });
   const setOption = (idx: number, val: string) => {
@@ -1530,8 +1614,8 @@ function QuizForm({ formData, setFormData, onSubmit, saving, saveError, onCancel
         )}
           </div>
 
-      {/* ── Type & difficulty ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {/* ── Type, difficulty & order ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="space-y-1.5">
           <label className="text-sm font-bold text-slate-700 block">Question Type</label>
           <select value={qType} onChange={e => set('type', e.target.value)}
@@ -1551,6 +1635,13 @@ function QuizForm({ formData, setFormData, onSubmit, saving, saveError, onCancel
                 <option value="Hard">Hard</option>
               </select>
             </div>
+        <div className="space-y-1.5">
+          <label className="text-sm font-bold text-slate-700 block">Display Order</label>
+          <input type="number" min={1} value={formData.order ?? ''} onChange={e => set('order', e.target.value ? Number(e.target.value) : undefined)}
+            className="block w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm transition-all outline-none font-medium text-slate-900"
+            placeholder="Auto" />
+          <p className="text-xs text-slate-500">Lower numbers appear first.</p>
+        </div>
           </div>
 
       {/* ── Image upload info ── */}
@@ -1615,12 +1706,33 @@ function QuizForm({ formData, setFormData, onSubmit, saving, saveError, onCancel
           </div>
       )}
 
+      {qType === 'text' && (
+        <div className="space-y-1.5">
+          <label className="text-sm font-bold text-slate-700 block">Additional Accepted Answers (optional)</label>
+          <input type="text" value={formData.alternativeAnswersText ?? ''} onChange={e => set('alternativeAnswersText', e.target.value)}
+            className="block w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm transition-all outline-none font-medium text-slate-900"
+            placeholder="(-2/9), (-2)/9 — comma-separated variants" />
+          <p className="text-xs text-slate-500">Enter alternate formats students may use. Primary answer above is always accepted.</p>
+        </div>
+      )}
+
       {/* ── Explanation ── */}
       <div className="space-y-1.5">
-        <label className="text-sm font-bold text-slate-700 block">Explanation (optional)</label>
-        <textarea value={formData.explanation ?? ''} onChange={e => set('explanation', e.target.value)}
-          className="block w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm transition-all outline-none font-medium text-slate-900 min-h-[70px] resize-y"
-          placeholder="Explain why this is correct. Math notation supported." />
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-bold text-slate-700 block">Explanation (optional)</label>
+          <button type="button" onClick={() => setExplanationPreview(v => !v)} className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1">
+            {explanationPreview ? 'Edit' : 'Preview Math'}
+          </button>
+        </div>
+        {explanationPreview ? (
+          <div className="min-h-[70px] px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 leading-relaxed">
+            <MathText text={formData.explanation ?? ''} />
+          </div>
+        ) : (
+          <textarea value={formData.explanation ?? ''} onChange={e => set('explanation', e.target.value)}
+            className="block w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm transition-all outline-none font-medium text-slate-900 min-h-[70px] resize-y"
+            placeholder="Explain why this is correct. Math notation supported." />
+        )}
           </div>
 
       <div className="pt-4 flex gap-3 border-t border-slate-100">

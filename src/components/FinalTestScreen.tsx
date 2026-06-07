@@ -748,7 +748,7 @@ export function FinalTestScreen({
                             {ques.explanation && (
                               <div className="mt-4 p-5 bg-blue-50 border border-blue-100 rounded-2xl flex items-start gap-3">
                                 <HelpCircle className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
-                                <p className="text-sm font-medium text-slate-700 leading-relaxed">{ques.explanation}</p>
+                                <div className="text-sm font-medium text-slate-700 leading-relaxed"><MathRenderer text={ques.explanation} /></div>
                               </div>
                             )}
                           </div>
@@ -764,7 +764,7 @@ export function FinalTestScreen({
 
         {/* ── 4. AI Teaching ──────────────────────────────────────────────── */}
         {testState === 'ai-teaching' && (
-          <div className="flex-1 w-full h-full">
+          <div className="flex-1 w-full min-h-0 overflow-hidden flex flex-col h-full">
             <VoiceClassroomPanel
               topicTitle={topicTitle}
               kind="finaltest"

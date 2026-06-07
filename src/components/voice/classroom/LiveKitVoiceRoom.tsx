@@ -24,7 +24,7 @@ export function LiveKitVoiceRoom({
       connect
       audio
       video={false}
-      className="contents"
+      className="flex flex-col flex-1 min-h-0 h-full w-full overflow-hidden"
     >
       <RoomAudioRenderer />
       {children}

@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata = {
   title: "Vidhyapika",
-  description: "Vidhyapika Learning Solutions",
+  description: "AI-powered math learning platform for Grades 6-10 — structured curriculum, video lessons, AI tutoring, and live voice classrooms.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

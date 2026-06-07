@@ -18,7 +18,22 @@ import {
 import { getUserById } from "../../../../../backend/repositories/userRepo";
 import { sendFlaggedAlert } from "../../../../../backend/services/notifications";
 import { evaluateSubjectiveAnswer } from "../../../../../backend/services/ai";
+import type { Question } from "../../../../../backend/repositories/curriculumRepo";
 import { z } from "zod";
+
+function normalizeAnswer(s: string): string {
+  return s.toLowerCase().trim();
+}
+
+function matchesAcceptedAnswer(studentAnswer: string, question: Question): boolean {
+  const norm = normalizeAnswer(studentAnswer);
+  const accepted = [question.correctAnswer, ...(question.alternativeAnswers ?? [])].filter(Boolean) as string[];
+  return accepted.some((a) => normalizeAnswer(a) === norm);
+}
+
+function allAcceptedAnswersText(question: Question): string {
+  return [question.correctAnswer, ...(question.alternativeAnswers ?? [])].filter(Boolean).join(" OR ");
+}
 
 const SubmitSchema = z.object({
   contextType: z.enum(["prereq", "subtopic", "finaltest"]),
@@ -83,10 +98,13 @@ export async function POST(req: Request) {
         if (q.type === "text" || q.type === "image_upload") {
           if (!studentAnswer.trim()) {
             correct = false;
+          } else if (q.type === "text" && matchesAcceptedAnswer(studentAnswer, q)) {
+            correct = true;
+            aiReasoning = "Exact match to an accepted answer.";
           } else {
             const evalResult = await evaluateSubjectiveAnswer({
               questionText: q.text,
-              correctAnswerText: q.correctAnswer ?? "",
+              correctAnswerText: allAcceptedAnswersText(q),
               studentAnswer,
               type: q.type,
             });

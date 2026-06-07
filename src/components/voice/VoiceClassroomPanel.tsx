@@ -8,7 +8,11 @@ import type { CognitiveState, WhiteboardPayload } from "../../lib/voice/voiceEve
 import { VoiceLiveKitSessionBridge, type VoiceLiveKitSessionBridgeHandle } from "./classroom/VoiceLiveKitSessionBridge";
 import { VoiceWhiteboardArea } from "./classroom/VoiceWhiteboardArea";
 import type { WhiteboardHandle } from "./classroom/Whiteboard";
-import { ClassroomSessionRail } from "./classroom/ClassroomSessionRail";
+import {
+  ClassroomConceptRail,
+  ClassroomTranscriptRail,
+  ClassroomMobileAux,
+} from "./classroom/ClassroomSessionRail";
 import { TutorStatusPill } from "./classroom/TutorStatusPill";
 import { useKnowledgeGraph } from "./classroom/KnowledgeGraph";
 import { CognitiveBadge } from "./classroom/CognitiveBadge";
@@ -16,7 +20,6 @@ import { LiveKitVoiceRoom } from "./classroom/LiveKitVoiceRoom";
 import { VoiceControlBar } from "./classroom/VoiceControlBar";
 import { type LoadingStep } from "./classroom/VoiceConnectionStatus";
 import { VoiceLiveKitTracker } from "./classroom/VoiceLiveKitTracker";
-import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import {
   clearVoiceSessionStart,
   markVoiceSessionStart,
@@ -101,7 +104,6 @@ export function VoiceClassroomPanel({
   const [bootstrapStatus, setBootstrapStatus] = useState<"pending" | "ready" | "failed">("pending");
   const [tutorDataConnected, setTutorDataConnected] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
-  const [railOpen, setRailOpen] = useState(true);
   const [lastWhiteboardType, setLastWhiteboardType] = useState<string | null>(null);
   const [retryingBootstrap, setRetryingBootstrap] = useState(false);
   const [hydratedBoardLog, setHydratedBoardLog] = useState<Record<string, unknown>[] | null>(null);
@@ -662,8 +664,20 @@ export function VoiceClassroomPanel({
     );
   }
 
+  const sandboxDebugProps =
+    isSandbox
+      ? {
+          loadingStep,
+          bootstrapStatus,
+          sessionId,
+          roomName,
+          tutorDataConnected,
+          lastWhiteboardType,
+        }
+      : undefined;
+
   return (
-    <div className="flex flex-col h-full min-h-0 bg-slate-100">
+    <div className="flex flex-col h-full min-h-0 overflow-hidden bg-slate-100">
       <header className="vc-header shrink-0 px-4 py-3 flex items-center justify-between gap-3">
         <div className="min-w-0 flex items-center gap-3">
           <div className="hidden sm:flex w-9 h-9 rounded-xl bg-[#0084B4]/10 items-center justify-center shrink-0">
@@ -709,7 +723,7 @@ export function VoiceClassroomPanel({
         </div>
       ) : null}
 
-      <div className="flex-1 relative min-h-0 flex flex-col">
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col vc-stage">
         {token && livekitUrl ? (
           <LiveKitVoiceRoom
             token={token}
@@ -731,9 +745,20 @@ export function VoiceClassroomPanel({
               onSessionEnded={onSessionEnded}
               onDataConnected={() => setTutorDataConnected(true)}
             />
-            <div className="flex-1 relative min-h-0 flex flex-col">
-              <div className="flex-1 relative min-h-0 flex">
-                <div className="flex-1 min-w-0 min-h-0">
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+              <div className="vc-stage flex-1 min-h-0 overflow-hidden flex">
+                <aside className="hidden lg:flex w-[14rem] xl:w-[16rem] shrink-0 flex-col min-h-0 overflow-hidden">
+                  <ClassroomConceptRail
+                    nodes={knowledgeGraph.nodes}
+                    edges={knowledgeGraph.edges}
+                    pulseId={knowledgeGraph.pulseId}
+                    zoomedOut={knowledgeGraph.zoomedOut}
+                    onNodeClick={(id) => whiteboardRef.current?.scrollToConcept(id)}
+                    showDebug={isSandbox && showDebug}
+                    debugProps={sandboxDebugProps}
+                  />
+                </aside>
+                <main className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col">
                   <VoiceWhiteboardArea
                     whiteboardRef={whiteboardRef}
                     sessionId={sessionId ?? undefined}
@@ -742,53 +767,14 @@ export function VoiceClassroomPanel({
                       whiteboardHandlerRef.current = h;
                     }}
                   />
-                </div>
-                {railOpen ? (
-                  <aside className="hidden lg:flex w-[17.5rem] xl:w-80 shrink-0 flex-col min-h-0">
-                    <ClassroomSessionRail
-                      nodes={knowledgeGraph.nodes}
-                      edges={knowledgeGraph.edges}
-                      pulseId={knowledgeGraph.pulseId}
-                      zoomedOut={knowledgeGraph.zoomedOut}
-                      transcriptLines={transcriptLines}
-                      onNodeClick={(id) => whiteboardRef.current?.scrollToConcept(id)}
-                      showDebug={isSandbox && showDebug}
-                      debugProps={
-                        isSandbox
-                          ? {
-                              loadingStep,
-                              bootstrapStatus,
-                              sessionId,
-                              roomName,
-                              tutorDataConnected,
-                              lastWhiteboardType,
-                            }
-                          : undefined
-                      }
-                    />
-                    <button
-                      type="button"
-                      className="shrink-0 p-2 border-t border-slate-200 text-slate-500 hover:bg-slate-50 text-xs font-semibold"
-                      onClick={() => setRailOpen(false)}
-                    >
-                      Hide panel
-                    </button>
-                  </aside>
-                ) : (
-                  <button
-                    type="button"
-                    className="hidden lg:flex shrink-0 w-10 items-center justify-center border-l border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-                    onClick={() => setRailOpen(true)}
-                    aria-label="Show side panel"
-                  >
-                    <PanelRightOpen className="w-4 h-4" />
-                  </button>
-                )}
+                </main>
+                <aside className="hidden lg:flex w-[14rem] xl:w-[16rem] shrink-0 flex-col min-h-0 overflow-hidden">
+                  <ClassroomTranscriptRail transcriptLines={transcriptLines} />
+                </aside>
               </div>
-              <VoiceControlBar />
-              <div className="lg:hidden shrink-0 vc-mobile-rail min-h-0 flex flex-col">
+              <div className="lg:hidden shrink-0 vc-mobile-aux flex flex-col min-h-0">
                 {isSandbox ? (
-                  <div className="px-3 py-1 border-b border-slate-100 flex justify-end">
+                  <div className="px-3 py-1 border-b border-slate-100 flex justify-end shrink-0 bg-white">
                     <button
                       type="button"
                       className="text-[10px] font-bold text-slate-500"
@@ -798,7 +784,7 @@ export function VoiceClassroomPanel({
                     </button>
                   </div>
                 ) : null}
-                <ClassroomSessionRail
+                <ClassroomMobileAux
                   nodes={knowledgeGraph.nodes}
                   edges={knowledgeGraph.edges}
                   pulseId={knowledgeGraph.pulseId}
@@ -806,20 +792,10 @@ export function VoiceClassroomPanel({
                   transcriptLines={transcriptLines}
                   onNodeClick={(id) => whiteboardRef.current?.scrollToConcept(id)}
                   showDebug={isSandbox && showDebug}
-                  debugProps={
-                    isSandbox
-                      ? {
-                          loadingStep,
-                          bootstrapStatus,
-                          sessionId,
-                          roomName,
-                          tutorDataConnected,
-                          lastWhiteboardType,
-                        }
-                      : undefined
-                  }
+                  debugProps={sandboxDebugProps}
                 />
               </div>
+              <VoiceControlBar />
             </div>
           </LiveKitVoiceRoom>
         ) : (

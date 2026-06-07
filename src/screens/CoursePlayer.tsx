@@ -1251,8 +1251,8 @@ export function CoursePlayer() {
             </button>
             <p className="text-sm font-extrabold text-slate-900 truncate">AI teaching</p>
           </header>
-          <div className="flex-1 overflow-y-auto min-h-0 w-full p-0">
-            <div className="w-full max-w-none">
+          <div className="flex-1 min-h-0 overflow-hidden flex flex-col w-full p-0">
+            <div className="flex-1 min-h-0 h-full w-full max-w-none">
               <VoiceClassroomPanel
                 topicTitle={aiTeach.topicTitle}
                 subtopicTitle={aiTeach.subtopicTitle}

@@ -331,6 +331,9 @@ export type Question = {
   imageUrl?: string;
   options?: string[];
   correctAnswer?: string;
+  alternativeAnswers?: string[];
+  explanation?: string;
+  difficulty?: "Easy" | "Medium" | "Hard";
   order: number;
   isAIGenerated?: boolean;
   /** Set for AI-generated retake questions; scopes visibility to one student. */

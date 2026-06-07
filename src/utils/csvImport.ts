@@ -33,6 +33,7 @@
  *   image_url             optional diagram URL for the question stem
  *   option_a … option_d   MCQ options (optional for boolean/text)
  *   correct_answer        must match one of the options exactly (or "True"/"False")
+ *   alternative_answers   optional comma- or pipe-separated alternate text answers
  *   explanation           explanation text
  *   difficulty            "Easy" | "Medium" | "Hard"  (default: Medium)
  *
@@ -51,6 +52,12 @@
 import type { Question, Prerequisite, SubTopic, Topic, CurriculumClass, Standard } from '../data/adminMockData';
 
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+
+function parseAlternativeAnswersFromCsv(raw: string | undefined): string[] {
+  if (!raw?.trim()) return [];
+  const sep = raw.includes('|') ? '|' : ',';
+  return raw.split(sep).map(s => s.trim()).filter(Boolean);
+}
 
 // ─── Public types ────────────────────────────────────────────────────────────
 
@@ -103,6 +110,7 @@ interface RawRow {
   option_c: string;
   option_d: string;
   correct_answer: string;
+  alternative_answers: string;
   explanation: string;
   difficulty: string;
 }
@@ -116,7 +124,7 @@ export const FULL_TEMPLATE_HEADERS = [
   'subtopic_title', 'subtopic_video', 'subtopic_order', 'subtopic_passing_threshold',
   'quiz_type', 'question_text', 'image_url', 'question_type',
   'option_a', 'option_b', 'option_c', 'option_d',
-  'correct_answer', 'explanation', 'difficulty',
+  'correct_answer', 'alternative_answers', 'explanation', 'difficulty',
 ] as const;
 
 function parseThreshold(raw: string, fallback = 60): number {
@@ -232,7 +240,7 @@ export function parseCSV(csvText: string, existingStandards: Standard[] = []): P
     subtopic_title: '', subtopic_video: '', subtopic_order: '', subtopic_passing_threshold: '',
     quiz_type: '', question_text: '', image_url: '', question_type: '',
     option_a: '', option_b: '', option_c: '', option_d: '',
-    correct_answer: '', explanation: '', difficulty: '',
+    correct_answer: '', alternative_answers: '', explanation: '', difficulty: '',
   });
   let ctx = emptyCtx();
 
@@ -368,6 +376,10 @@ export function parseCSV(csvText: string, existingStandards: Standard[] = []): P
       correctAnswer = correctAnswer || undefined;
     }
 
+    const alternativeAnswers = qType === 'text'
+      ? parseAlternativeAnswersFromCsv(r.alternative_answers)
+      : [];
+
     return {
       id: uid(),
       text: r.question_text,
@@ -375,6 +387,7 @@ export function parseCSV(csvText: string, existingStandards: Standard[] = []): P
       imageUrl: r.image_url || undefined,
       options,
       correctAnswer,
+      alternativeAnswers,
       explanation: r.explanation,
       difficulty,
     };
@@ -420,6 +433,7 @@ export function parseCSV(csvText: string, existingStandards: Standard[] = []): P
       option_c:        get(cells, 'option_c'),
       option_d:        get(cells, 'option_d'),
       correct_answer:  get(cells, 'correct_answer'),
+      alternative_answers: get(cells, 'alternative_answers'),
       explanation:     get(cells, 'explanation'),
       difficulty:      cascade('difficulty'),
     };
@@ -862,6 +876,10 @@ export function rowsToItems(rows: Record<string, string>[], target: LevelParseTa
       options = null;
     }
 
+    const alternativeAnswers = qType === "text"
+      ? parseAlternativeAnswersFromCsv(get(r, "alternative_answers"))
+      : [];
+
     return {
       id: uid(),
       text: get(r, "question_text"),
@@ -869,6 +887,7 @@ export function rowsToItems(rows: Record<string, string>[], target: LevelParseTa
       imageUrl: imageUrl || null,
       options,
       correctAnswer: qType === "image_upload" ? (correct || null) : correct || null,
+      alternativeAnswers,
       explanation,
       difficulty,
     };
@@ -931,6 +950,7 @@ export function parseLevelData(
     'option_a', 'option_b', 'option_c', 'option_d',
     'a', 'b', 'c', 'd',
     'correct_answer', 'answer', 'correct',
+    'alternative_answers', 'alternate_answers',
     'explanation',
     'difficulty',
   ]);
@@ -985,6 +1005,7 @@ export function parseLevelData(
     type: 'question_type',
     a: 'option_a', b: 'option_b', c: 'option_c', d: 'option_d',
     answer: 'correct_answer', correct: 'correct_answer',
+    alternate_answers: 'alternative_answers',
   };
   headers = headers.map(h => ALIAS[h] ?? h);
 
@@ -1073,6 +1094,10 @@ export function parseLevelData(
         options = null;
       }
 
+      const alternativeAnswers = qType === 'text'
+        ? parseAlternativeAnswersFromCsv(getCell(cells, 'alternative_answers'))
+        : [];
+
       items.push({
         id: uid(),
         text,
@@ -1080,6 +1105,7 @@ export function parseLevelData(
         imageUrl: imageUrl || null,
         options: options ?? null,
         correctAnswer: qType === 'image_upload' ? (correct || null) : correct,
+        alternativeAnswers,
         explanation,
         difficulty,
       });
@@ -1115,11 +1141,12 @@ export function generateLevelTemplateCSV(target: LevelParseTarget): string {
       ].join('\n');
     case 'questions':
       return [
-        'question_text,image_url,question_type,option_a,option_b,option_c,option_d,correct_answer,explanation,difficulty',
-        'What is 5 + 3 × 2?,,mcq,16,11,10,13,11,"BODMAS: multiply first → 3×2=6 → 5+6=11",Easy',
-        'Is 4x a monomial?,,true_false,,,,,True,A monomial has exactly one term.,Easy',
-        'Simplify 2x + 3x,,mcq,5x,6x,x,5x²,5x,Combine like terms: coefficients 2+3=5.,Medium',
-        'Show your work for ∫ x dx,,image_upload,,,,,,"Upload a photo of your solution",Medium',
+        'question_text,image_url,question_type,option_a,option_b,option_c,option_d,correct_answer,alternative_answers,explanation,difficulty',
+        'What is 5 + 3 × 2?,,mcq,16,11,10,13,11,,"BODMAS: multiply first → 3×2=6 → 5+6=11",Easy',
+        'Is 4x a monomial?,,true_false,,,,,True,,"A monomial has exactly one term.",Easy',
+        'Simplify 2x + 3x,,mcq,5x,6x,x,5x²,5x,,"Combine like terms: coefficients 2+3=5.",Medium',
+        'What is -2/9 as a fraction?,,text,,,,,-2/9,"(-2/9)|(-2)/9","Equivalent forms accepted.",Easy',
+        'Show your work for ∫ x dx,,image_upload,,,,,,,"Upload a photo of your solution",Medium',
       ].join('\n');
   }
 }
@@ -1154,7 +1181,8 @@ export const LEVEL_COLUMN_DOCS: Record<LevelParseTarget, LevelColumnDoc[]> = {
     { name: 'option_b',        required: false, description: 'Second MCQ choice.', example: '3' },
     { name: 'option_c',        required: false, description: 'Third MCQ choice (optional).', example: '5' },
     { name: 'option_d',        required: false, description: 'Fourth MCQ choice (optional).', example: '6' },
-    { name: 'correct_answer',  required: false, description: 'For MCQ: must match an option exactly. For True/False: True or False. For text: accepted answer. For image_upload: optional rubric note.', example: '4' },
+    { name: 'correct_answer',  required: false, description: 'For MCQ: must match an option exactly. For True/False: True or False. For text: primary accepted answer. For image_upload: optional rubric note.', example: '4' },
+    { name: 'alternative_answers', required: false, description: 'Text questions only: comma- or pipe-separated alternate accepted answers.', example: '(-2/9)|(-2)/9' },
     { name: 'explanation',     required: false, description: 'Explanation shown after answering.', example: 'Because 2+2 equals 4.' },
     { name: 'difficulty',      required: false, description: 'Difficulty level.', allowedValues: 'Easy | Medium | Hard', example: 'Easy' },
   ],
@@ -1194,23 +1222,23 @@ export function generateTemplateCSV(level: ImportLevel = 'full'): string {
     // MCQ — subtopic quiz
     row([
       ...blank(17),
-      'subtopic', 'What is 5 + 3 × 2?', '', 'mcq', '16', '11', '10', '13', '11', 'BODMAS: multiply first', 'Easy',
+      'subtopic', 'What is 5 + 3 × 2?', '', 'mcq', '16', '11', '10', '13', '11', '', 'BODMAS: multiply first', 'Easy',
     ]),
     // true_false — pre-evaluation
     row([
       ...blank(17),
-      'pre', 'Is 4x a monomial?', '', 'true_false', '', '', '', '', 'True', 'A monomial has exactly one term.', 'Easy',
+      'pre', 'Is 4x a monomial?', '', 'true_false', '', '', '', '', 'True', '', 'A monomial has exactly one term.', 'Easy',
     ]),
     // text — final test
     row([
       ...blank(17),
-      'post', 'Simplify 2x + 3x', '', 'text', '', '', '', '', '5x', 'Combine like terms: 2+3=5.', 'Medium',
+      'post', 'Simplify 2x + 3x', '', 'text', '', '', '', '', '5x', '5*x', 'Combine like terms: 2+3=5.', 'Medium',
     ]),
     // image_upload — subtopic quiz with stem diagram
     row([
       ...blank(17),
       'subtopic', 'Label the parts of the polynomial diagram', 'https://example.com/diagram.png', 'image_upload',
-      '', '', '', '', '', 'Upload a clear photo of your labelled diagram.', 'Medium',
+      '', '', '', '', '', '', 'Upload a clear photo of your labelled diagram.', 'Medium',
     ]),
     // Second subtopic (inherits topic context)
     row([
@@ -1259,7 +1287,8 @@ export const COLUMN_DOCS: ColumnDoc[] = [
   { name: 'option_b', required: false, description: 'Second MCQ choice.', example: '3' },
   { name: 'option_c', required: false, description: 'Third MCQ choice (optional).', example: '5' },
   { name: 'option_d', required: false, description: 'Fourth MCQ choice (optional).', example: '6' },
-  { name: 'correct_answer', required: false, description: 'MCQ: must exactly match an option. true_false: True or False. text: accepted answer. image_upload: optional rubric note.', example: '4' },
+  { name: 'correct_answer', required: false, description: 'MCQ: must exactly match an option. true_false: True or False. text: primary accepted answer. image_upload: optional rubric note.', example: '4' },
+  { name: 'alternative_answers', required: false, description: 'Text questions only: comma- or pipe-separated alternate accepted answers.', example: '(-2/9)|(-2)/9' },
   { name: 'explanation', required: false, description: 'Explanation shown after answering.', example: 'Because 2+2 equals 4.' },
   { name: 'difficulty', required: false, description: 'Difficulty level.', allowedValues: 'Easy | Medium | Hard', example: 'Easy' },
 ];

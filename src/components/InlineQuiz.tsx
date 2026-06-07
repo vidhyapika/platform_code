@@ -1043,7 +1043,7 @@ export function InlineQuiz({
                       <AlertCircle className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
                       <div>
                         <p className="text-[10px] font-extrabold text-blue-500 uppercase tracking-widest mb-1">Explanation</p>
-                        <p className="text-sm font-medium text-slate-700 leading-relaxed">{q.explanation}</p>
+                        <div className="text-sm font-medium text-slate-700 leading-relaxed"><MathRenderer text={q.explanation} /></div>
                       </div>
                     </div>
                   )}

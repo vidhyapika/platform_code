@@ -26,13 +26,15 @@ export function VoiceWhiteboardArea({
   };
 
   return (
-    <Whiteboard
-      ref={whiteboardRef}
-      onMount={onMount}
-      sessionId={sessionId}
-      initialLog={initialLog}
-      onAskAbout={handleAsk}
-      onSubmitAnswer={submitBoardAnswer}
-    />
+    <div className="h-full min-h-0 overflow-hidden flex flex-col">
+      <Whiteboard
+        ref={whiteboardRef}
+        onMount={onMount}
+        sessionId={sessionId}
+        initialLog={initialLog}
+        onAskAbout={handleAsk}
+        onSubmitAnswer={submitBoardAnswer}
+      />
+    </div>
   );
 }

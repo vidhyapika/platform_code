@@ -98,6 +98,7 @@ export interface Question {
   type: 'text' | 'mcq' | 'boolean' | 'true_false' | 'image_upload';
   options?: string[];
   correctAnswer?: string;
+  alternativeAnswers?: string[];
   explanation: string;
   difficulty: 'Easy' | 'Medium' | 'Hard';
   imageUrl?: string;

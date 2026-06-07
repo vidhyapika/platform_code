@@ -1,17 +1,24 @@
-import React from 'react';
+type LogoProps = {
+  className?: string;
+  variant?: 'header' | 'hero' | 'mark';
+};
 
-export function Logo({ className = '' }: { className?: string }) {
+const LOGO_SRC = '/vidhyapika_one_line.png';
+
+const VARIANT_CLASSES = {
+  header: 'h-9 w-auto max-w-[180px] sm:max-w-[200px]',
+  hero: 'h-12 sm:h-14 w-auto max-w-[240px]',
+  mark: 'h-9 w-9 object-cover object-left',
+} as const;
+
+export function Logo({ className = '', variant = 'header' }: LogoProps) {
   return (
-    <div className={`flex items-center gap-3 ${className}`}>
-      <div className="w-10 h-10 bg-[#1E293B] rounded-xl flex items-center justify-center relative overflow-hidden shrink-0">
-        {/* Abstract wave/book shape inside logo */}
-        <div className="absolute bottom-0 left-0 w-full h-1/2 bg-[#0084B4] rounded-t-full transform translate-y-1"></div>
-        <div className="absolute bottom-0 left-0 w-full h-1/3 bg-[#7CB342] rounded-t-full transform translate-y-1 translate-x-2"></div>
-      </div>
-      <div className="flex flex-col">
-        <span className="text-xl font-bold text-[#0084B4] leading-none tracking-tight">Vidhyapika</span>
-        <span className="text-[9px] font-bold text-slate-400 tracking-widest uppercase mt-0.5">Grades 6-10</span>
-      </div>
+    <div className={`flex items-center shrink-0 ${className}`}>
+      <img
+        src={LOGO_SRC}
+        alt="Vidhyapika"
+        className={`object-contain ${VARIANT_CLASSES[variant]}`}
+      />
     </div>
   );
 }

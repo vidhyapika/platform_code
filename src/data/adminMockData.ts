@@ -24,6 +24,7 @@ export interface Question {
   imageUrl?: string;
   options?: string[];
   correctAnswer?: string;
+  alternativeAnswers?: string[];
   explanation: string;
   difficulty: 'Easy' | 'Medium' | 'Hard';
 }

@@ -378,7 +378,7 @@ export const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(function
         ) : null}
 
         <div ref={scrollRef} className="wb-root flex-1 overflow-y-auto px-4 py-4 bg-slate-50/80 min-h-0">
-          <div id="whiteboard" className="min-h-full w-full max-w-5xl mx-auto space-y-3">
+          <div id="whiteboard" className="min-h-0 w-full max-w-5xl mx-auto space-y-3">
             {boardEntries.length === 0 ? (
               <div className="wb-empty flex flex-col items-center justify-center min-h-[40vh] text-center px-6">
                 <p className="text-sm font-semibold text-slate-500">Your lesson board</p>

@@ -16,6 +16,9 @@ const CreateSchema = z.object({
   imageUrl: z.union([z.string().url(), z.literal(""), z.null()]).optional().default(null),
   options: z.array(z.string()).nullable().optional().default(null),
   correctAnswer: z.string().nullable().optional().default(null),
+  alternativeAnswers: z.array(z.string()).optional().default([]),
+  explanation: z.string().optional().default(""),
+  difficulty: z.enum(["Easy", "Medium", "Hard"]).optional().default("Medium"),
   order: z.number().int().default(0),
 });
 
@@ -74,6 +77,9 @@ export async function POST(req: Request) {
       imageUrl: body.imageUrl || null,
       options: body.options ?? [],
       correctAnswer: body.correctAnswer ?? null,
+      alternativeAnswers: body.alternativeAnswers ?? [],
+      explanation: body.explanation ?? "",
+      difficulty: body.difficulty ?? "Medium",
       order: body.order,
       isAIGenerated: false,
     } as any);

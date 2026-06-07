@@ -18,6 +18,7 @@ import { Achievements } from './screens/Achievements';
 import { Settings } from './screens/Settings';
 import { Messages } from './screens/Messages';
 import { DemoPortal } from './screens/DemoPortal';
+import { LandingPage } from './screens/LandingPage';
 
 // Admin Pages
 import { AdminLogin } from './screens/admin/AdminLogin';
@@ -80,7 +81,7 @@ export default function App() {
     <Router>
       <Routes>
         {/* Student Routes */}
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/" element={<LandingPage />} />
         <Route path="/demo" element={<DemoPortal />} />
         <Route path="/login" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -115,7 +116,7 @@ export default function App() {
         <Route path="/parent/dashboard" element={<ParentRoute><ParentDashboard /></ParentRoute>} />
 
         {/* Fallback route */}
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
     </AuthProvider>

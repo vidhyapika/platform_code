@@ -51,9 +51,64 @@
   }
 }
 
+.vc-stage {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .vc-rail {
   border-left: 1px solid #e2e8f0;
   box-shadow: -4px 0 24px rgb(15 23 42 / 0.04);
+}
+
+.vc-rail--left {
+  border-left: none;
+  border-right: 1px solid #e2e8f0;
+  box-shadow: 4px 0 24px rgb(15 23 42 / 0.04);
+}
+
+.vc-rail--right {
+  border-left: 1px solid #e2e8f0;
+  box-shadow: -4px 0 24px rgb(15 23 42 / 0.04);
+}
+
+.vc-rail-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.vc-rail-header-title {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #0f172a;
+}
+
+.vc-rail-header-hint {
+  margin: 0.15rem 0 0;
+  font-size: 0.62rem;
+  font-weight: 500;
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.vc-rail-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.vc-transcript-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .vc-rail-tabs {
@@ -174,9 +229,11 @@
   cursor: not-allowed;
 }
 
-.vc-mobile-rail {
+.vc-mobile-aux {
   border-top: 1px solid #e2e8f0;
-  max-height: 38vh;
+  max-height: 32vh;
+  overflow: hidden;
+  flex-shrink: 0;
 }
 
 .wb-toast {
@@ -208,4 +265,7 @@
 
 .wb-shell {
   position: relative;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }

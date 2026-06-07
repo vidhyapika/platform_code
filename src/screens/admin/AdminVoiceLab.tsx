@@ -198,7 +198,7 @@ export function AdminVoiceLab() {
                 End & configure new
               </button>
             </div>
-            <div className="flex-1 min-h-[60vh]">
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
               <VoiceClassroomPanel
                 key={sessionKey}
                 mode="sandbox"
