@@ -8,18 +8,24 @@ const TRUST_ITEMS = [
   { icon: Mic, label: 'Live Voice Class', color: 'text-[#0084B4]' },
 ];
 
-function HeadlineSparkles() {
+function SparkleStar({ className = '' }: { className?: string }) {
   return (
-    <svg
-      className="absolute -top-2 right-8 sm:right-12 lg:right-16 w-12 h-10 text-[#7CB342] pointer-events-none"
-      viewBox="0 0 48 40"
-      fill="none"
+    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <path d="M8 0 L9.2 6.8 L16 8 L9.2 9.2 L8 16 L6.8 9.2 L0 8 L6.8 6.8 Z" />
+    </svg>
+  );
+}
+
+function AcademicSparkles() {
+  return (
+    <span
+      className="absolute left-1/2 -translate-x-1/2 -top-5 sm:-top-6 flex items-end gap-1 pointer-events-none"
       aria-hidden
     >
-      <path d="M8 28 L10 20 L14 24 L12 14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M22 10 L23 4 L26 8 L24 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M34 18 L36 12 L39 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+      <SparkleStar className="w-2.5 h-2.5 text-[#9CCC65] mb-1" />
+      <SparkleStar className="w-4 h-4 text-[#7CB342]" />
+      <SparkleStar className="w-3 h-3 text-[#7CB342]/80" />
+    </span>
   );
 }
 
@@ -69,14 +75,12 @@ export function LandingHero() {
       >
         <div className="flex flex-col justify-center min-h-0 px-6 sm:px-10 lg:px-12 xl:px-16 2xl:px-24 py-10 lg:py-0 text-center lg:text-left">
           <div className="relative w-full lg:max-w-[36rem] xl:max-w-[42rem] mx-auto lg:mx-0">
-            <div
-              className="h-1 w-16 rounded-full bg-gradient-to-r from-[#7CB342] to-[#0084B4] mb-6 mx-auto lg:mx-0"
-              aria-hidden
-            />
-            <HeadlineSparkles />
             <h1 className="text-4xl sm:text-5xl lg:text-[2.75rem] xl:text-5xl 2xl:text-[3.5rem] font-extrabold leading-[1.12] tracking-tight">
               <span className="text-slate-800">Unlock Your </span>
-              <span className="text-[#7CB342]">Academic </span>
+              <span className="relative inline-block text-[#7CB342]">
+                <AcademicSparkles />
+                Academic{' '}
+              </span>
               <span className="relative inline-block text-[#0084B4]">
                 Potential.
                 <PotentialUnderline />

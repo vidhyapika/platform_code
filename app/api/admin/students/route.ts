@@ -121,7 +121,7 @@ export async function POST(req: Request) {
 
     }
 
-    // Send welcome emails in the background — do not await SMTP or the admin waits several seconds.
+    // Send welcome emails in the background — do not await email send or the admin waits several seconds.
     if (body.sendEmail) {
       const emailPromise = body.parentEmail
         ? sendEnrollmentNotifications({

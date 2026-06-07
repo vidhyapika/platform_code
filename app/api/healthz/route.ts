@@ -11,7 +11,7 @@ export async function GET() {
       ok: true,
       firebaseProjectId: env.FIREBASE_PROJECT_ID,
       hasStorageBucket: !!env.FIREBASE_STORAGE_BUCKET,
-      hasSmtp: !!(env.SMTP_HOST && env.SMTP_PORT && env.SMTP_USER && env.SMTP_PASS),
+      hasResend: !!(env.RESEND_API_KEY && env.RESEND_FROM),
       hasGeminiKey: !!env.GEMINI_API_KEY,
     };
   } catch (e: any) {

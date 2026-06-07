@@ -1,34 +1,35 @@
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 
-function createTransport() {
-  const host = process.env.SMTP_HOST || "smtp.gmail.com";
-  const port = parseInt(process.env.SMTP_PORT || "587", 10);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+let resendClient: Resend | null = null;
 
-  if (!user || !pass) {
-    return null;
-  }
-
-  return nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: { user, pass },
-  });
+function getResend(): Resend | null {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return null;
+  if (!resendClient) resendClient = new Resend(apiKey);
+  return resendClient;
 }
 
 function getFrom(): string {
-  return process.env.SMTP_FROM || `Vidhyapika <${process.env.SMTP_USER}>`;
+  return process.env.RESEND_FROM || "Vidhyapika <onboarding@resend.dev>";
 }
 
 async function sendEmail(to: string, subject: string, html: string): Promise<void> {
-  const transport = createTransport();
-  if (!transport) {
+  const resend = getResend();
+  if (!resend) {
     console.log(`[EMAIL MOCK] To: ${to}\nSubject: ${subject}\n---\n${html}\n---`);
     return;
   }
-  await transport.sendMail({ from: getFrom(), to, subject, html });
+
+  const { error } = await resend.emails.send({
+    from: getFrom(),
+    to: [to],
+    subject,
+    html,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
 }
 
 export async function sendEnrollmentNotifications(params: {

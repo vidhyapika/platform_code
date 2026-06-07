@@ -14,12 +14,9 @@ const EnvSchema = z.object({
   JWT_ISSUER: z.string().min(1).default("vidhyapika"),
   JWT_AUDIENCE: z.string().min(1).default("vidhyapika-web"),
 
-  // SMTP (Gmail)
-  SMTP_HOST: z.string().default("smtp.gmail.com"),
-  SMTP_PORT: z.coerce.number().int().default(587),
-  SMTP_USER: z.string().optional(),
-  SMTP_PASS: z.string().optional(),
-  SMTP_FROM: z.string().optional(),
+  // Email (Resend)
+  RESEND_API_KEY: z.string().optional(),
+  RESEND_FROM: z.string().optional(),
 
   // AI (server-side only)
   GEMINI_API_KEY: z.string().optional(),
