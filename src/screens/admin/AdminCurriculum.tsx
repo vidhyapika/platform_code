@@ -23,9 +23,9 @@ import { apiFetch } from '../../hooks/useApi';
 
 type ViewLevel = 'standards' | 'classes' | 'topics' | 'subtopics';
 
-type ApiStandard = { id: string; name: string; description?: string; order: number };
-type ApiClass    = { id: string; standardId: string; name: string; passingThreshold: number };
-type ApiTopic    = { id: string; classId: string; name: string; order: number; finalTestThreshold: number };
+type ApiStandard = { id: string; name: string; description?: string; order: number; classCount?: number };
+type ApiClass    = { id: string; standardId: string; name: string; passingThreshold: number; topicCount?: number };
+type ApiTopic    = { id: string; classId: string; name: string; order: number; finalTestThreshold: number; subTopicCount?: number };
 type ApiSubTopic = { id: string; topicId: string; name: string; order: number; youtubeUrl?: string; passingThreshold: number };
 type ApiPrereq   = { id: string; topicId: string; name: string; description?: string; passingThreshold: number; maxAIAttempts: number };
 
@@ -382,12 +382,16 @@ export function AdminCurriculum() {
     const { data } = await apiFetch<{ topics: ApiTopic[] }>(`/api/admin/classes/${classId}/topics`);
     const topics = data?.topics ?? [];
     setTopicsMap(m => ({ ...m, [classId]: topics }));
-    await Promise.all(
+    const subTopicEntries = await Promise.all(
       topics.map(async (t) => {
         const { data: st } = await apiFetch<{ subTopics: ApiSubTopic[] }>(`/api/admin/topics/${t.id}/subtopics`);
-        setSubTopicsMap(m => ({ ...m, [t.id]: st?.subTopics ?? [] }));
+        return [t.id, st?.subTopics ?? []] as const;
       })
     );
+    setSubTopicsMap(m => ({
+      ...m,
+      ...Object.fromEntries(subTopicEntries),
+    }));
     setLoadingTop(false);
   }, []);
 
@@ -802,7 +806,7 @@ export function AdminCurriculum() {
               </div>
               <div className="flex-1">
                 <h3 className="text-xl font-black text-slate-900 mb-1.5 leading-tight">{std.name}</h3>
-                <p className="text-sm font-semibold text-slate-500 bg-slate-50 inline-flex items-center px-2.5 py-1 rounded-lg border border-slate-100">{(classesMap[std.id] ?? []).length} Classes</p>
+                <p className="text-sm font-semibold text-slate-500 bg-slate-50 inline-flex items-center px-2.5 py-1 rounded-lg border border-slate-100">{std.classCount ?? classesMap[std.id]?.length ?? 0} Classes</p>
               </div>
               <button onClick={() => navigateTo('classes', { standardId: std.id })} className="mt-6 w-full py-3 bg-slate-50 hover:bg-[#0084B4] text-slate-700 hover:text-white font-extrabold rounded-xl transition-all text-sm flex items-center justify-center gap-2 group-hover:shadow-md">
                 Manage Classes <ArrowLeft className="w-4 h-4 rotate-180" />
@@ -845,7 +849,7 @@ export function AdminCurriculum() {
               </div>
               <div className="flex-1">
                 <h3 className="text-xl font-black text-slate-900 mb-1.5 leading-tight">{cls.name}</h3>
-                <p className="text-sm font-semibold text-slate-500 bg-slate-50 inline-flex items-center px-2.5 py-1 rounded-lg border border-slate-100">{(topicsMap[cls.id] ?? []).length} Topics</p>
+                <p className="text-sm font-semibold text-slate-500 bg-slate-50 inline-flex items-center px-2.5 py-1 rounded-lg border border-slate-100">{cls.topicCount ?? topicsMap[cls.id]?.length ?? 0} Topics</p>
               </div>
               <button onClick={() => navigateTo('topics', { classId: cls.id })} className="mt-6 w-full py-3 bg-slate-50 hover:bg-indigo-600 text-slate-700 hover:text-white font-extrabold rounded-xl transition-all text-sm flex items-center justify-center gap-2 group-hover:shadow-md">
                 Manage Topics <ArrowLeft className="w-4 h-4 rotate-180" />
@@ -887,7 +891,7 @@ export function AdminCurriculum() {
                     <h3 className="font-extrabold text-slate-900 text-lg mb-1">{topic.name}</h3>
                     <div className="flex items-center gap-3">
                       <span className="text-xs font-bold text-slate-500 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100">
-                        {(subTopicsMap[topic.id] ?? []).length} Sub-topics
+                        {topic.subTopicCount ?? subTopicsMap[topic.id]?.length ?? 0} Sub-topics
                       </span>
                     </div>
                   </div>

@@ -5,12 +5,25 @@ import { createAccessToken, verifyPassword } from "../../../backend/services/aut
 const LoginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
+  portal: z.enum(["student", "parent", "admin"]).optional(),
 });
+
+const PORTAL_ROLE: Record<string, string> = {
+  student: "student",
+  parent: "parent",
+  admin: "admin",
+};
+
+const PORTAL_MISMATCH: Record<string, string> = {
+  student: "This account is not a student account. Please use the parent or admin portal.",
+  parent: "This account is not a parent account. Please use the student portal.",
+  admin: "This account is not an admin account.",
+};
 
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
-    const { email, password } = LoginSchema.parse(body);
+    const { email, password, portal } = LoginSchema.parse(body);
 
     // Env-based admin login — bypasses Firestore, works even before Firestore is set up.
     const envAdminEmail =
@@ -25,6 +38,10 @@ export async function POST(req: Request) {
     ) {
       if (password !== envAdminPassword) {
         return Response.json({ error: "Invalid credentials" }, { status: 401 });
+      }
+
+      if (portal && portal !== "admin") {
+        return Response.json({ error: PORTAL_MISMATCH[portal] }, { status: 403 });
       }
 
       const token = await createAccessToken({
@@ -61,6 +78,13 @@ export async function POST(req: Request) {
 
     if (user.must_reset_password) {
       return Response.json({ success: true, requirePasswordReset: true });
+    }
+
+    if (portal) {
+      const expectedRole = PORTAL_ROLE[portal];
+      if (user.role !== expectedRole) {
+        return Response.json({ error: PORTAL_MISMATCH[portal] }, { status: 403 });
+      }
     }
 
     const token = await createAccessToken({

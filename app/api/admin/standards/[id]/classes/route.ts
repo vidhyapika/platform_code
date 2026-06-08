@@ -2,6 +2,7 @@ import { verifyJWT, requireAdmin } from "../../../../../../backend/middleware/au
 import {
   listClasses,
   createClass,
+  countChildrenByParentIds,
 } from "../../../../../../backend/repositories/curriculumRepo";
 import { requireDemoScope } from "../../../../../../backend/utils/demoAdminScope";
 import { z } from "zod";
@@ -22,7 +23,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (demo) {
     classes = classes.filter((c) => c.id === demo.classId && c.standardId === demo.standardId);
   }
-  return Response.json({ classes });
+  const topicCounts = await countChildrenByParentIds(
+    "topics",
+    "classId",
+    classes.map((c) => c.id)
+  );
+  return Response.json({
+    classes: classes.map((c) => ({
+      ...c,
+      topicCount: topicCounts.get(c.id) ?? 0,
+    })),
+  });
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {

@@ -7,6 +7,7 @@ import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { useApiGet } from '../hooks/useApi';
 import { mapRawTopicToStudentTopic } from '../utils/studentCurriculumMap';
+import { useAuth } from '../contexts/AuthContext';
 
 const EMPTY_CURRICULUM = {
   standard: '',
@@ -27,9 +28,10 @@ const QUICK_LINKS = [
 
 export function Dashboard() {
   const navigate = useNavigate();
+  const { user: authUser } = useAuth();
   const { data: curriculumData, loading: curriculumLoading, error: curriculumError } =
     useApiGet<{ curriculums: any[]; message?: string }>('/api/student/curriculum');
-  const { data: meData } = useApiGet<{ user: { name: string | null; email: string } }>('/api/student/me', []);
+  const { data: meData } = useApiGet<{ user: { name: string | null; email: string; displayName?: string } }>('/api/student/me', []);
   const { data: achievementsData } = useApiGet<{ streakDays: number; totalPoints: number; badges: { key: string; title: string; description: string; unlocked: boolean }[] }>('/api/student/achievements', []);
   const { data: assignmentsData } = useApiGet<{ assignments: any[] }>('/api/student/assignments', []);
   const today = new Date();
@@ -91,7 +93,11 @@ export function Dashboard() {
 
   const streakDays      = achievementsData?.streakDays ?? 0;
   const aiSessionTotal  = 0; // Keeping 0 for now
-  const displayName     = meData?.user?.name ?? (meData?.user?.email?.split('@')?.[0] ?? 'Student');
+  const displayName =
+    meData?.user?.displayName ??
+    authUser?.name ??
+    meData?.user?.name ??
+    (meData?.user?.email?.split('@')?.[0] ?? authUser?.email?.split('@')?.[0] ?? 'Student');
 
   const pendingAssignments = (assignmentsData?.assignments ?? []).filter((a: any) => a.submission?.status === 'not_submitted');
   const dashboardAssignments = pendingAssignments.slice(0, 3).map((a: any) => ({

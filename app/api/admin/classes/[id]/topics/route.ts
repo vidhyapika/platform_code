@@ -2,6 +2,7 @@ import { verifyJWT, requireAdmin } from "../../../../../../backend/middleware/au
 import {
   listTopics,
   createTopic,
+  countChildrenByParentIds,
 } from "../../../../../../backend/repositories/curriculumRepo";
 import { requireDemoScope } from "../../../../../../backend/utils/demoAdminScope";
 import { z } from "zod";
@@ -24,7 +25,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (demo) {
     topics = topics.filter((t) => t.classId === demo.classId && demo.topicIds.includes(t.id));
   }
-  return Response.json({ topics });
+  const subTopicCounts = await countChildrenByParentIds(
+    "subTopics",
+    "topicId",
+    topics.map((t) => t.id)
+  );
+  return Response.json({
+    topics: topics.map((t) => ({
+      ...t,
+      subTopicCount: subTopicCounts.get(t.id) ?? 0,
+    })),
+  });
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {

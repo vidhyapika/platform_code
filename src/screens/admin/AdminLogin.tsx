@@ -18,7 +18,7 @@ export function AdminLogin() {
     setError('');
     setLoading(true);
 
-    const result = await login(email, password);
+    const result = await login(email, password, 'admin');
     setLoading(false);
 
     if (result.error) {

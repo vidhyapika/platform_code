@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, Navigate } from 'react-router-dom';
 import { Mail, Lock, Link as LinkIcon, ArrowRight } from 'lucide-react';
 import { AuthLayout } from '../components/AuthLayout';
 import { useAuth } from '../contexts/AuthContext';
@@ -10,7 +10,11 @@ export function Login() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, token, user, ready } = useAuth();
+
+  if (ready && token && user?.role === 'student') {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,7 +22,7 @@ export function Login() {
     setIsLoading(true);
 
     try {
-      const result = await login(email, password);
+      const result = await login(email, password, 'student');
       if (result.error) {
         throw new Error(result.error);
       }

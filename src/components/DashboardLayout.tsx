@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   BookOpen, 
@@ -27,7 +27,14 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { data: notificationsSummary } = useApiGet<{ unreadCount: number }>('/api/student/notifications/summary', []);
   const { data: messagesUnread } = useApiGet<{ unreadCount: number }>('/api/student/messages/unread-count', []);
   const notEnrolled = curriculumData && (!curriculumData.curriculums || curriculumData.curriculums.length === 0);
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    const dest = user?.role === 'parent' ? '/parent/login' : '/login';
+    logout();
+    navigate(dest, { replace: true });
+  };
 
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -40,7 +47,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   const bottomNavigation = [
     { name: 'Settings', href: '/settings', icon: Settings },
-    { name: 'Logout', href: '/login', icon: LogOut },
   ];
 
   return (
@@ -132,6 +138,14 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               {item.name}
             </Link>
           ))}
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="w-full group flex items-center px-4 py-3 text-sm font-semibold rounded-xl text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+          >
+            <LogOut className="mr-3 flex-shrink-0 h-5 w-5 text-slate-400 group-hover:text-slate-600" />
+            Logout
+          </button>
         </div>
       </div>
 

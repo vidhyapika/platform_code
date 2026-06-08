@@ -1,5 +1,26 @@
 import { getDb } from "../firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
+import { queryDocumentsWhereIn } from "../utils/firestoreQuery";
+
+/** Count child documents grouped by a parent id field (batched `in` queries). */
+export async function countChildrenByParentIds(
+  collection: string,
+  parentField: string,
+  parentIds: string[]
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  for (const id of parentIds) counts.set(id, 0);
+  if (parentIds.length === 0) return counts;
+
+  const docs = await queryDocumentsWhereIn(getDb(), collection, parentField, parentIds);
+  for (const doc of docs) {
+    const pid = doc.data()[parentField];
+    if (typeof pid === "string" && counts.has(pid)) {
+      counts.set(pid, (counts.get(pid) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
 
 // ─── Standards ───────────────────────────────────────────────────────────────
 

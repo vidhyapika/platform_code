@@ -6,11 +6,17 @@ type User = {
   role: string;
 };
 
+export type LoginPortal = 'student' | 'parent' | 'admin';
+
 type AuthContextType = {
   token: string | null;
   user: User | null;
   ready: boolean;
-  login: (email: string, password: string) => Promise<{ requirePasswordReset?: boolean; error?: string }>;
+  login: (
+    email: string,
+    password: string,
+    portal?: LoginPortal
+  ) => Promise<{ requirePasswordReset?: boolean; error?: string }>;
   logout: () => void;
   isAdmin: boolean;
   isStudent: boolean;
@@ -18,31 +24,50 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-const TOKEN_KEY = 'vidhyapika_token';
-const USER_KEY = 'vidhyapika_user';
+export const TOKEN_KEY = 'vidhyapika_token';
+export const USER_KEY = 'vidhyapika_user';
+export const SESSION_EXPIRED_EVENT = 'vidhyapika:session-expired';
+
+export function readStoredSession(): { token: string | null; user: User | null } {
+  if (typeof window === 'undefined') return { token: null, user: null };
+  try {
+    const token = localStorage.getItem(TOKEN_KEY);
+    const saved = localStorage.getItem(USER_KEY);
+    return { token, user: saved ? JSON.parse(saved) : null };
+  } catch {
+    return { token: null, user: null };
+  }
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  // Next.js can render on the server; localStorage is only available in the browser.
-  const [token, setToken] = useState<string | null>(null);
-  const [user, setUser] = useState<User | null>(null);
-  const [ready, setReady] = useState(false);
+  const initial = readStoredSession();
+  const [token, setToken] = useState<string | null>(initial.token);
+  const [user, setUser] = useState<User | null>(initial.user);
+  const [ready, setReady] = useState(typeof window !== 'undefined');
 
   useEffect(() => {
-    try {
-      const t = localStorage.getItem(TOKEN_KEY);
-      const saved = localStorage.getItem(USER_KEY);
-      setToken(t);
-      setUser(saved ? JSON.parse(saved) : null);
-    } finally {
-      setReady(true);
-    }
+    if (typeof window === 'undefined') return;
+    setReady(true);
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
+  const logout = useCallback(() => {
+    setToken(null);
+    setUser(null);
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+  }, []);
+
+  useEffect(() => {
+    const onSessionExpired = () => logout();
+    window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+  }, [logout]);
+
+  const login = useCallback(async (email: string, password: string, portal?: LoginPortal) => {
     const res = await fetch('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, ...(portal ? { portal } : {}) }),
     });
     const data = await res.json();
 
@@ -54,13 +79,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(TOKEN_KEY, data.token);
     localStorage.setItem(USER_KEY, JSON.stringify(data.user));
     return {};
-  }, []);
-
-  const logout = useCallback(() => {
-    setToken(null);
-    setUser(null);
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
   }, []);
 
   return (

@@ -86,13 +86,13 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/dashboard" element={<StudentRoute><Dashboard /></StudentRoute>} />
         <Route path="/courses" element={<EnrollmentRoute><Courses /></EnrollmentRoute>} />
         <Route path="/learn" element={<EnrollmentRoute><CoursePlayer /></EnrollmentRoute>} />
         <Route path="/assignments" element={<EnrollmentRoute><Assignments /></EnrollmentRoute>} />
         <Route path="/schedule" element={<EnrollmentRoute><Schedule /></EnrollmentRoute>} />
         <Route path="/achievements" element={<EnrollmentRoute><Achievements /></EnrollmentRoute>} />
-        <Route path="/settings" element={<Settings />} />
+        <Route path="/settings" element={<StudentRoute><Settings /></StudentRoute>} />
         <Route path="/messages" element={<StudentRoute><Messages /></StudentRoute>} />
         
         {/* Admin Routes */}

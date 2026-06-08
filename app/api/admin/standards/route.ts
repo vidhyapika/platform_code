@@ -2,6 +2,7 @@ import { verifyJWT, requireAdmin } from "../../../../backend/middleware/auth";
 import {
   listStandards,
   createStandard,
+  countChildrenByParentIds,
 } from "../../../../backend/repositories/curriculumRepo";
 import { requireDemoScope } from "../../../../backend/utils/demoAdminScope";
 import { z } from "zod";
@@ -22,7 +23,17 @@ export async function GET(req: Request) {
   if (demo) {
     standards = standards.filter((s) => s.id === demo.standardId);
   }
-  return Response.json({ standards });
+  const classCounts = await countChildrenByParentIds(
+    "classes",
+    "standardId",
+    standards.map((s) => s.id)
+  );
+  return Response.json({
+    standards: standards.map((s) => ({
+      ...s,
+      classCount: classCounts.get(s.id) ?? 0,
+    })),
+  });
 }
 
 export async function POST(req: Request) {

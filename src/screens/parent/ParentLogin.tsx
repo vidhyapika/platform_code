@@ -18,7 +18,7 @@ export function ParentLogin() {
     setError('');
     setLoading(true);
 
-    const result = await login(email, password);
+    const result = await login(email, password, 'parent');
     setLoading(false);
 
     if (result.error) {

@@ -1,7 +1,8 @@
 import { useState, useCallback, useEffect } from 'react';
+import { SESSION_EXPIRED_EVENT, TOKEN_KEY, USER_KEY } from '../contexts/AuthContext';
 
 function getToken(): string | null {
-  return localStorage.getItem('vidhyapika_token');
+  return localStorage.getItem(TOKEN_KEY);
 }
 
 export async function apiFetch<T = any>(
@@ -21,8 +22,9 @@ export async function apiFetch<T = any>(
     if (!res.ok) {
       // Token expired or missing — clear session and redirect to the appropriate login page
       if (res.status === 401) {
-        localStorage.removeItem('vidhyapika_token');
-        localStorage.removeItem('vidhyapika_user');
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_KEY);
+        window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
         const dest = url.includes('/api/admin/') ? '/admin/login' : '/login';
         if (typeof window !== 'undefined' && !window.location.pathname.endsWith('/login')) {
           window.location.href = dest;
