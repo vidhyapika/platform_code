@@ -7,6 +7,7 @@ import {
 import { requireDemoScope } from "../../../../backend/utils/demoAdminScope";
 import { getDb } from "../../../../backend/firebase/admin";
 import { z } from "zod";
+import { normalizeQuestionFields, normalizeQuestionRow } from "../../../../backend/utils/questionAnswerMatch";
 
 const CreateSchema = z.object({
   contextType: z.enum(["prereq", "subtopic", "finaltest"]),
@@ -54,7 +55,7 @@ export async function GET(req: Request) {
         if (!topicId || !demo.topicIds.includes(topicId)) return Response.json({ questions: [] });
       }
     }
-    const questions = await listQuestions(contextType as QuestionContextType, contextId);
+    const questions = (await listQuestions(contextType as QuestionContextType, contextId)).map(normalizeQuestionRow);
     return Response.json({ questions });
   } catch (e: any) {
     if (e?.name === "ZodError") return Response.json({ error: "Validation error", details: e.issues }, { status: 400 });
@@ -69,14 +70,15 @@ export async function POST(req: Request) {
 
   try {
     const body = CreateSchema.parse(await req.json());
+    const tfNorm = normalizeQuestionFields(body);
     const id = await createQuestion({
       contextType: body.contextType as QuestionContextType,
       contextId: body.contextId,
       text: body.text,
       type: body.type,
       imageUrl: body.imageUrl || null,
-      options: body.options ?? [],
-      correctAnswer: body.correctAnswer ?? null,
+      options: tfNorm.options ?? body.options ?? [],
+      correctAnswer: tfNorm.correctAnswer ?? body.correctAnswer ?? null,
       alternativeAnswers: body.alternativeAnswers ?? [],
       explanation: body.explanation ?? "",
       difficulty: body.difficulty ?? "Medium",

@@ -57,29 +57,39 @@ export async function getParentUserLinkedToStudent(studentId: string): Promise<U
 }
 
 export async function getUserByEmail(email: string): Promise<UserRow | null> {
+  const users = await listUsersByEmail(email);
+  return users[0] ?? null;
+}
+
+export async function listUsersByEmail(email: string): Promise<UserRow[]> {
   try {
     const db = getDb();
     const snap = await db
       .collection("users")
       .where("email", "==", email.toLowerCase())
-      .limit(1)
       .get();
-    if (snap.empty) return null;
-    const doc = snap.docs[0]!;
-    return docToUserRow(doc.id, doc.data());
+    return snap.docs.map((d) => docToUserRow(d.id, d.data()));
   } catch (err: any) {
-    // Firestore misconfig / permissions should not crash login flows.
-    // Return null and log a clear hint for operators.
     const code = err?.code ?? err?.status ?? err?.errorInfo?.code;
     const message = err?.message ?? String(err);
-    console.error("[userRepo.getUserByEmail] Firestore error", {
+    console.error("[userRepo.listUsersByEmail] Firestore error", {
       code,
       message,
       hint:
         "Check FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY and ensure Firestore is enabled for the project.",
     });
-    return null;
+    return [];
   }
+}
+
+export async function getUserByEmailAndRole(email: string, role: string): Promise<UserRow | null> {
+  const users = await listUsersByEmail(email);
+  return users.find((u) => u.role === role) ?? null;
+}
+
+export async function isEmailUsedByOtherUser(email: string, excludeUserId?: string): Promise<boolean> {
+  const users = await listUsersByEmail(email);
+  return users.some((u) => u.id !== excludeUserId);
 }
 
 export async function getUserById(id: string): Promise<UserRow | null> {
@@ -207,6 +217,7 @@ export async function createUser(params: {
 export async function updateUser(
   id: string,
   data: Partial<{
+    email: string;
     name: string | null;
     role: string;
     passwordHash: string;

@@ -14,7 +14,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { AdminLayout } from '../../components/AdminLayout';
-import { MathRenderer } from '../../components/MathRenderer';
+import { MathRenderer, StudentAnswerMath } from '../../components/MathRenderer';
 import { Modal } from '../../components/ui/Modal';
 import { apiFetch, useApiGet } from '../../hooks/useApi';
 import type { ComposeRecipients } from '../../types/messages';
@@ -353,9 +353,9 @@ export function AdminQueryResolution() {
                   <section className="grid sm:grid-cols-2 gap-4">
                     <div className="rounded-xl border border-red-100 bg-red-50/50 p-4">
                       <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">Student answer</p>
-                      <p className="text-sm font-bold text-slate-800 whitespace-pre-wrap break-words">
-                        {flag.studentAnswer || '—'}
-                      </p>
+                      <div className="text-sm font-bold text-slate-800 whitespace-pre-wrap break-words">
+                        <StudentAnswerMath answer={flag.studentAnswer || '—'} />
+                      </div>
                     </div>
                     <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-4">
                       <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">Expected</p>

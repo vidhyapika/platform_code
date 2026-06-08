@@ -4,8 +4,7 @@ import { AdminLayout } from '../../components/AdminLayout';
 import { Modal } from '../../components/ui/Modal';
 import { LevelImportPanel } from '../../components/LevelImportPanel';
 import { ThresholdSlider } from '../../components/ui/ThresholdSlider';
-import { InlineMath, BlockMath } from 'react-katex';
-import 'katex/dist/katex.min.css';
+import { MathRenderer } from '../../components/MathRenderer';
 import { 
   Plus, Edit2, Trash2, ChevronRight, ChevronUp, ChevronDown,
   BookOpen, Layers, ListTree, AlertTriangle, Calculator,
@@ -18,6 +17,7 @@ import {
   PieChart, Pie, Cell,
 } from 'recharts';
 import { apiFetch } from '../../hooks/useApi';
+import { isTrueFalseOptionCorrect, normalizeQuestionForDisplay } from '../../utils/questionAnswerMatch';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,33 +48,6 @@ type Question = {
 function parseAlternativeAnswers(input: string | undefined): string[] {
   if (!input?.trim()) return [];
   return input.split(',').map(s => s.trim()).filter(Boolean);
-}
-
-// ─── Math renderer ────────────────────────────────────────────────────────────
-
-function MathText({ text }: { text: string }) {
-  if (!text) return null;
-  // Split by $$...$$ (block) and $...$ (inline)
-  const parts: React.ReactNode[] = [];
-  const blockRe = /\$\$(.+?)\$\$/gs;
-  const inlineRe = /\$(.+?)\$/g;
-
-  let last = 0;
-  let i = 0;
-  const merged = text.replace(blockRe, (_, math) => `\x00BLOCK:${math}\x00`)
-                      .replace(inlineRe, (_, math) => `\x00INLINE:${math}\x00`);
-  const segments = merged.split('\x00').filter(Boolean);
-
-  for (const seg of segments) {
-    if (seg.startsWith('BLOCK:')) {
-      parts.push(<BlockMath key={i++} math={seg.slice(6)} />);
-    } else if (seg.startsWith('INLINE:')) {
-      parts.push(<InlineMath key={i++} math={seg.slice(7)} />);
-    } else {
-      parts.push(<span key={i++}>{seg}</span>);
-    }
-  }
-  return <>{parts}</>;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -417,7 +390,7 @@ export function AdminCurriculum() {
   const loadQuestions = useCallback(async (contextType: string, contextId: string) => {
     const key = `${contextType}:${contextId}`;
     const { data } = await apiFetch<{ questions: Question[] }>(`/api/admin/questions?contextType=${contextType}&contextId=${contextId}`);
-    setQuestionsMap(m => ({ ...m, [key]: data?.questions ?? [] }));
+    setQuestionsMap(m => ({ ...m, [key]: (data?.questions ?? []).map(normalizeQuestionForDisplay) }));
   }, []);
 
   // ── Effects ──────────────────────────────────────────────────────────────────
@@ -972,16 +945,19 @@ export function AdminCurriculum() {
       )}
       {/* Question text with math */}
       <div className="text-base font-semibold text-slate-900 mb-5 pr-20 leading-relaxed">
-        <MathText text={quiz.text} />
+        <MathRenderer text={quiz.text} />
       </div>
       {/* MCQ / T-F options */}
       {(quiz.type === 'mcq' || quiz.type === 'true_false') && quiz.options && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
           {quiz.options.map((opt, oIndex) => {
-            const isCorrect = opt === quiz.correctAnswer;
+            const isCorrect =
+              quiz.type === 'true_false'
+                ? isTrueFalseOptionCorrect(opt, quiz.correctAnswer)
+                : opt === quiz.correctAnswer;
             return (
               <div key={oIndex} className={`p-3.5 rounded-xl border-2 flex items-center justify-between ${isCorrect ? 'border-green-500 bg-green-50' : 'border-slate-100 bg-slate-50'}`}>
-                <div className={`font-medium text-sm ${isCorrect ? 'text-green-900' : 'text-slate-700'}`}><MathText text={opt} /></div>
+                <div className={`font-medium text-sm ${isCorrect ? 'text-green-900' : 'text-slate-700'}`}><MathRenderer text={opt} /></div>
                 {isCorrect && <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0 ml-2" />}
               </div>
             );
@@ -1001,13 +977,13 @@ export function AdminCurriculum() {
           <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
           <div>
             <span className="text-[10px] font-bold text-green-700 uppercase tracking-widest block mb-0.5">Accepted Answer</span>
-            <span className="font-medium text-green-900 text-sm"><MathText text={quiz.correctAnswer} /></span>
+            <span className="font-medium text-green-900 text-sm"><MathRenderer text={quiz.correctAnswer} /></span>
             {(quiz.alternativeAnswers ?? []).length > 0 && (
               <div className="mt-2">
                 <span className="text-[10px] font-bold text-green-600 uppercase tracking-widest block mb-0.5">Also accepted</span>
                 <span className="font-medium text-green-800 text-sm">
                   {(quiz.alternativeAnswers ?? []).map((alt, i) => (
-                    <span key={i}>{i > 0 ? ', ' : ''}<MathText text={alt} /></span>
+                    <span key={i}>{i > 0 ? ', ' : ''}<MathRenderer text={alt} /></span>
                   ))}
                 </span>
               </div>
@@ -1019,7 +995,7 @@ export function AdminCurriculum() {
       {quiz.explanation && (
         <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
           <span className="text-[10px] font-bold text-blue-700 uppercase tracking-widest block mb-1">Explanation</span>
-          <p className="text-sm text-blue-900"><MathText text={quiz.explanation} /></p>
+          <p className="text-sm text-blue-900"><MathRenderer text={quiz.explanation} /></p>
         </div>
       )}
     </div>
@@ -1560,7 +1536,7 @@ function QuizForm({ formData, setFormData, onSubmit, saving, saveError, onCancel
           </div>
         {mathPreview ? (
           <div className="min-h-[80px] px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-base font-semibold text-slate-900 leading-relaxed">
-            <MathText text={formData.text ?? ''} />
+            <MathRenderer text={formData.text ?? ''} />
           </div>
         ) : (
           <textarea required value={formData.text ?? ''} onChange={e => set('text', e.target.value)}
@@ -1730,7 +1706,7 @@ function QuizForm({ formData, setFormData, onSubmit, saving, saveError, onCancel
         </div>
         {explanationPreview ? (
           <div className="min-h-[70px] px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 leading-relaxed">
-            <MathText text={formData.explanation ?? ''} />
+            <MathRenderer text={formData.explanation ?? ''} />
           </div>
         ) : (
           <textarea value={formData.explanation ?? ''} onChange={e => set('explanation', e.target.value)}

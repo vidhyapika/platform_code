@@ -1,4 +1,5 @@
 import React from 'react';
+import { prepareContentForMathDisplay, prepareStudentAnswerForDisplay } from '../utils/mathDisplay';
 
 // Lazy load KaTeX to avoid SSR issues
 let katex: any = null;
@@ -92,9 +93,15 @@ type MathRendererProps = {
   text: string;
   className?: string;
   block?: boolean;
+  variant?: 'content' | 'studentAnswer';
 };
 
-export function MathRenderer({ text, className = '', block = false }: MathRendererProps) {
+export function MathRenderer({
+  text,
+  className = '',
+  block = false,
+  variant = 'content',
+}: MathRendererProps) {
   const [, forceUpdate] = React.useReducer((x) => x + 1, 0);
 
   React.useEffect(() => {
@@ -103,10 +110,48 @@ export function MathRenderer({ text, className = '', block = false }: MathRender
     }
   }, []);
 
-  const parts = parseMath(text);
+  if (variant === 'studentAnswer') {
+    const trimmed = text?.trim() ?? '';
+    if (!trimmed) {
+      return <span className={`italic text-slate-500 ${className}`.trim()}>—</span>;
+    }
+    const { display, useMath } = prepareStudentAnswerForDisplay(text);
+    if (!useMath) {
+      return (
+        <span className={`whitespace-pre-wrap break-words ${className}`.trim()}>
+          {display}
+        </span>
+      );
+    }
+    const Tag = block ? 'div' : 'span';
+    return <Tag className={className}>{parseMath(display)}</Tag>;
+  }
+
+  const prepared = prepareContentForMathDisplay(text);
+  const parts = parseMath(prepared);
   const Tag = block ? 'div' : 'span';
 
   return <Tag className={className}>{parts}</Tag>;
+}
+
+/** Convenience wrapper for student-typed answers in review/history screens. */
+export function StudentAnswerMath({
+  answer,
+  className = '',
+  block = false,
+}: {
+  answer: string;
+  className?: string;
+  block?: boolean;
+}) {
+  return (
+    <MathRenderer
+      text={answer}
+      className={className}
+      block={block}
+      variant="studentAnswer"
+    />
+  );
 }
 
 /** Standalone LaTeX block renderer (for AI lesson cards, etc.) */

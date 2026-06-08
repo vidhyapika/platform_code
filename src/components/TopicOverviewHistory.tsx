@@ -3,6 +3,7 @@ import {
   Network, Video, HelpCircle, CheckCircle2, ClipboardList, ChevronDown,
 } from 'lucide-react';
 import type { Prerequisite, Question, StudentSubTopicProgress, StudentTopicProgress } from '../types';
+import { MathRenderer, StudentAnswerMath } from './MathRenderer';
 import { parseAnswerImageUrls } from '../utils/quizAnswerDisplay';
 import { FlagQuestionButton } from './FlagQuestionModal';
 import { useApiGet } from '../hooks/useApi';
@@ -99,7 +100,9 @@ function QuizAttemptBlock({
                 key={`${att.id}-${a.questionId}`}
                 className="rounded-lg border border-slate-100 bg-slate-50/60 p-3 text-sm space-y-1.5"
               >
-                <p className="font-semibold text-slate-800 leading-snug">{meta?.text ?? 'Question'}</p>
+                <div className="font-semibold text-slate-800 leading-snug">
+                  <MathRenderer text={meta?.text ?? 'Question'} />
+                </div>
                 {showImages ? (
                   <div className="space-y-2">
                     <p className="text-slate-600 font-medium">Your answer (images)</p>
@@ -128,14 +131,14 @@ function QuizAttemptBlock({
                 ) : (
                   <p className="text-slate-600">
                     Your answer:{' '}
-                    <span className="font-medium text-slate-900 break-words whitespace-pre-wrap">
-                      {a.answer?.trim() ? a.answer : '—'}
+                    <span className="font-medium text-slate-900 break-words">
+                      <StudentAnswerMath answer={a.answer?.trim() ? a.answer : '—'} />
                     </span>
                   </p>
                 )}
                 {meta?.correctAnswer != null && meta.correctAnswer !== '' && (
                   <p className="text-xs text-slate-500">
-                    Expected: <span className="font-medium text-slate-700">{meta.correctAnswer}</span>
+                    Expected: <span className="font-medium text-slate-700"><MathRenderer text={meta.correctAnswer} /></span>
                   </p>
                 )}
                 <p className={`text-xs font-bold ${a.correct ? 'text-emerald-600' : 'text-rose-600'}`}>

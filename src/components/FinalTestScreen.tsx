@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { AIBadge } from './ui/AIBadge';
 import { VoiceClassroomPanel } from './voice/VoiceClassroomPanel';
-import { MathRenderer } from './MathRenderer';
+import { MathRenderer, StudentAnswerMath } from './MathRenderer';
 import { MathAnswerInput } from './MathAnswerInput';
 import { apiFetch } from '../hooks/useApi';
 import type { Question } from '../types';
@@ -724,13 +724,17 @@ export function FinalTestScreen({
                                     ))}
                                   </div>
                                 ) : (
-                                  <p className={`text-lg font-bold ${evalFailed ? 'text-amber-800' : isCorrect ? 'text-emerald-700' : 'text-red-700'}`}>{answers[ques.id] ?? 'Skipped'}</p>
+                                  <div className={`text-lg font-bold ${evalFailed ? 'text-amber-800' : isCorrect ? 'text-emerald-700' : 'text-red-700'}`}>
+                                    <StudentAnswerMath answer={answers[ques.id] ?? 'Skipped'} />
+                                  </div>
                                 )}
                               </div>
                               {!isCorrect && !evalFailed && (
                                 <div className="bg-emerald-50 p-5 rounded-2xl border border-emerald-100 shadow-sm">
                                   <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600/60 mb-2">Correct Answer</p>
-                                  <p className="text-lg font-bold text-emerald-700">{ques.correctAnswer}</p>
+                                  <div className="text-lg font-bold text-emerald-700">
+                                    <MathRenderer text={ques.correctAnswer ?? '—'} />
+                                  </div>
                                 </div>
                               )}
                             </div>

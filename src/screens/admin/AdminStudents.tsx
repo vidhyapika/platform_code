@@ -163,12 +163,19 @@ export function AdminStudents() {
         showToast(true, `Student added. Temp password: ${data.tempPassword}.${emailNote}`);
       } else showToast(true, 'Student added successfully.');
     } else if (modal.type === 'edit') {
-      const { error } = await apiFetch(`/api/admin/students/${modal.payload.id}`, {
+      const { data, error } = await apiFetch<{ success?: boolean; warning?: string }>(`/api/admin/students/${modal.payload.id}`, {
         method: 'PUT',
-        body: JSON.stringify({ name: form.name, classIds: form.classIds || [], phone: form.phone || null, parentName: form.parentName || null, parentEmail: form.parentEmail || null }),
+        body: JSON.stringify({
+          name: form.name,
+          email: form.email,
+          classIds: form.classIds || [],
+          phone: form.phone || null,
+          parentName: form.parentName || null,
+          parentEmail: form.parentEmail || null,
+        }),
       });
       if (error) { setSaveError(error); setSaving(false); return; }
-      showToast(true, 'Student updated.');
+      showToast(true, data?.warning ?? 'Student updated.');
     }
 
     await refetchStudents();
@@ -380,7 +387,7 @@ export function AdminStudents() {
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">Email</label>
-              <input type="email" required value={form.email ?? ''} onChange={e => setForm({ ...form, email: e.target.value })} disabled={modal.type === 'edit'}
+              <input type="email" required value={form.email ?? ''} onChange={e => setForm({ ...form, email: e.target.value })}
                 className="block w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm transition-all outline-none font-medium text-slate-900 disabled:opacity-60" placeholder="student@email.com" />
             </div>
           </div>

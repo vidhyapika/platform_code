@@ -6,7 +6,7 @@ import {
   ArrowRight, ArrowLeft, PlayCircle, LayoutGrid, Trash2, Check, Loader2,
   History, RotateCcw, ChevronRight, Sparkles,
 } from 'lucide-react';
-import { MathRenderer } from './MathRenderer';
+import { MathRenderer, StudentAnswerMath } from './MathRenderer';
 import { studentAnswerToPreviewLatex } from '../utils/studentMathPreview';
 import { MathAnswerInput } from './MathAnswerInput';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -121,6 +121,16 @@ function formatAttemptDateLabel(dateStr: string): string {
   return dateStr;
 }
 
+function renderStudentAnswerContent(answer: string, questionType?: string) {
+  if (!answer?.trim()) {
+    return <span className="italic text-slate-500">Skipped</span>;
+  }
+  if (questionType !== 'text' && questionType !== 'boolean' && questionType !== 'mcq') {
+    return <span className="whitespace-pre-wrap break-words">{answer}</span>;
+  }
+  return <StudentAnswerMath answer={answer} block />;
+}
+
 function formatStoredAnswerForDisplay(
   answer: string,
   questionType?: string,
@@ -225,9 +235,17 @@ function AttemptBreakdownBlocks({
                       );
                     })()
                   ) : (
-                    <p className="text-sm md:text-base font-semibold text-slate-800 whitespace-pre-wrap break-words">
-                      {hasRow ? formatStoredAnswerForDisplay(row!.answer, q.type, { maxTextLength }) : '—'}
-                    </p>
+                    <div className="text-sm md:text-base font-semibold text-slate-800 whitespace-pre-wrap break-words">
+                      {hasRow ? (
+                        q.type === 'text' ? (
+                          renderStudentAnswerContent(row!.answer, q.type)
+                        ) : (
+                          formatStoredAnswerForDisplay(row!.answer, q.type, { maxTextLength })
+                        )
+                      ) : (
+                        '—'
+                      )}
+                    </div>
                   )}
                 </div>
                 {hasRow && !correct && (
@@ -998,14 +1016,12 @@ export function InlineQuiz({
                         )
                       ) : q.type === 'text' ? (
                         <div className={`font-bold break-words ${isCorrect ? 'text-emerald-700' : 'text-red-700'}`}>
-                          {answers[q.id] ? (
-                            <MathRenderer text={studentAnswerToPreviewLatex(answers[q.id])} block />
-                          ) : (
-                            <span className="italic text-slate-500">Skipped</span>
-                          )}
+                          {renderStudentAnswerContent(answers[q.id] ?? '', q.type)}
                         </div>
                       ) : (
-                        <p className={`font-bold whitespace-pre-wrap break-words ${isCorrect ? 'text-emerald-700' : 'text-red-700'}`}>{answers[q.id] || 'Skipped'}</p>
+                        <div className={`font-bold whitespace-pre-wrap break-words ${isCorrect ? 'text-emerald-700' : 'text-red-700'}`}>
+                          {renderStudentAnswerContent(answers[q.id] ?? '', q.type)}
+                        </div>
                       )}
                     </div>
                     

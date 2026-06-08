@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Modal } from './ui/Modal';
 import { Question } from '../types';
 import { CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
-import { MathRenderer } from './MathRenderer';
+import { MathRenderer, StudentAnswerMath } from './MathRenderer';
 
 interface QuizModalProps {
   isOpen: boolean;
@@ -170,9 +170,9 @@ export function QuizModal({ isOpen, onClose, title, questions, onSubmit, initial
                       {isCorrect ? <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0 mt-0.5" /> : <XCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />}
                       <div>
                         <div className="font-bold text-slate-900 mb-2">{idx + 1}. <MathRenderer text={q.text} /></div>
-                        <p className="text-sm text-slate-600 mb-1">Your answer: <span className="font-semibold"><MathRenderer text={answers[q.id] ?? '—'} /></span></p>
+                        <p className="text-sm text-slate-600 mb-1">Your answer: <span className="font-semibold"><StudentAnswerMath answer={answers[q.id] ?? '—'} /></span></p>
                         {!isCorrect && <p className="text-sm text-slate-600 mb-2">Correct: <span className="font-semibold"><MathRenderer text={q.correctAnswer ?? ''} /></span></p>}
-                        {q.explanation && <p className="text-sm text-slate-500 mt-2 bg-white/50 p-2 rounded">{q.explanation}</p>}
+                        {q.explanation && <p className="text-sm text-slate-500 mt-2 bg-white/50 p-2 rounded"><MathRenderer text={q.explanation} /></p>}
                       </div>
                     </div>
                   </div>

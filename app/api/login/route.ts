@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getUserByEmail } from "../../../backend/repositories/userRepo";
+import { getUserByEmail, getUserByEmailAndRole } from "../../../backend/repositories/userRepo";
 import { createAccessToken, verifyPassword } from "../../../backend/services/auth";
 
 const LoginSchema = z.object({
@@ -59,9 +59,11 @@ export async function POST(req: Request) {
     }
 
     // Firestore-based login for students / parents
-    const user = await getUserByEmail(email);
+    const user = portal
+      ? await getUserByEmailAndRole(email, PORTAL_ROLE[portal])
+      : await getUserByEmail(email);
     if (!user) {
-      console.warn(`[POST /api/login] 401: User not found for email ${email}`);
+      console.warn(`[POST /api/login] 401: User not found for email ${email}${portal ? ` (portal=${portal})` : ""}`);
       return Response.json({ error: "Invalid credentials" }, { status: 401 });
     }
 

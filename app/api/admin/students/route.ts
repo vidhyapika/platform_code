@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { after } from "next/server";
 import { verifyJWT, requireAdmin } from "../../../../backend/middleware/auth";
-import { listUsersByRole, createUser } from "../../../../backend/repositories/userRepo";
+import { listUsersByRole, createUser, getUserByEmail, isEmailUsedByOtherUser } from "../../../../backend/repositories/userRepo";
 import { hashPassword } from "../../../../backend/services/auth";
 import { sendEnrollmentNotifications } from "../../../../backend/services/notifications";
 import { syncStudentEnrollments } from "../../../../backend/repositories/curriculumRepo";
@@ -89,6 +89,21 @@ export async function POST(req: Request) {
 
   try {
     const body = CreateStudentSchema.parse(await req.json());
+
+    if (body.parentEmail && body.email.toLowerCase() === body.parentEmail.toLowerCase()) {
+      return Response.json(
+        { error: "Student email and parent email must be different." },
+        { status: 400 }
+      );
+    }
+
+    if (await getUserByEmail(body.email)) {
+      return Response.json({ error: "A user with this email already exists." }, { status: 409 });
+    }
+    if (body.parentEmail && (await getUserByEmail(body.parentEmail))) {
+      return Response.json({ error: "A user with this parent email already exists." }, { status: 409 });
+    }
+
     const tempPassword = generateTempPassword();
     const passwordHash = await hashPassword(tempPassword);
 

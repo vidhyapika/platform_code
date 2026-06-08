@@ -5,6 +5,7 @@ import {
   deleteQuestion,
 } from "../../../../../backend/repositories/curriculumRepo";
 import { z } from "zod";
+import { normalizeQuestionFields, normalizeQuestionRow } from "../../../../../backend/utils/questionAnswerMatch";
 
 const UpdateSchema = z.object({
   text: z.string().min(1).optional(),
@@ -26,7 +27,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const { id } = await params;
   const question = await getQuestion(id);
   if (!question) return Response.json({ error: "Not found" }, { status: 404 });
-  return Response.json({ question });
+  return Response.json({ question: normalizeQuestionRow(question) });
 }
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -37,7 +38,15 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   const { id } = await params;
   try {
     const body = UpdateSchema.parse(await req.json());
-    await updateQuestion(id, body as any);
+    const qType = body.type;
+    const existing = qType === undefined ? await getQuestion(id) : null;
+    const effectiveType = qType ?? existing?.type;
+    const tfNorm = normalizeQuestionFields({
+      type: effectiveType,
+      correctAnswer: body.correctAnswer ?? existing?.correctAnswer,
+      options: body.options ?? existing?.options,
+    });
+    await updateQuestion(id, { ...body, ...tfNorm } as any);
     return Response.json({ success: true });
   } catch (e: any) {
     if (e?.name === "ZodError") return Response.json({ error: "Validation error", details: e.issues }, { status: 400 });
