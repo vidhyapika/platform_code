@@ -7,7 +7,7 @@ import {
   History, RotateCcw, ChevronRight, Sparkles,
 } from 'lucide-react';
 import { MathRenderer, StudentAnswerMath } from './MathRenderer';
-import { studentAnswerToPreviewLatex } from '../utils/studentMathPreview';
+import { isQuestionCorrect } from '../utils/quizAnswerMatch';
 import { MathAnswerInput } from './MathAnswerInput';
 import { motion, AnimatePresence } from 'framer-motion';
 import { compressImagesToBase64 } from '../utils/imageCompress';
@@ -70,7 +70,7 @@ function buildClientReviewGrading(questions: Question[], answers: Record<string,
   const perQuestion: QuizSubmitGradingResult['perQuestion'] = {};
   let score = 0;
   for (const q of questions) {
-    const ok = (answers[q.id] ?? '') === (q.correctAnswer ?? '');
+    const ok = isQuestionCorrect(q, answers[q.id] ?? '');
     if (ok) score++;
     perQuestion[q.id] = { correct: ok };
   }
@@ -435,7 +435,7 @@ export function InlineQuiz({
   const calculateScore = () => {
     let score = 0;
     questions.forEach(q => {
-      if (answers[q.id] === q.correctAnswer) score++;
+      if (isQuestionCorrect(q, answers[q.id] ?? '')) score++;
     });
     return score;
   };
@@ -899,11 +899,11 @@ export function InlineQuiz({
     const evalIncomplete = !!grading.evaluationIncomplete;
     const reviewAttemptId = grading.attemptId ?? quizFlagScope?.quizAttemptId;
 
-    const isQuestionCorrect = (q: Question) =>
+    const isReviewQuestionCorrect = (q: Question) =>
       grading.perQuestion[q.id]?.evaluationFailed
         ? false
         : grading.perQuestion[q.id]?.correct ??
-          (answers[q.id] ?? '') === (q.correctAnswer ?? '');
+          isQuestionCorrect(q, answers[q.id] ?? '');
 
     return (
       <div className="flex-1 bg-white overflow-y-auto h-full p-4 sm:p-8 lg:p-12">
@@ -983,7 +983,7 @@ export function InlineQuiz({
           <div className="space-y-6">
             {questions.map((q, idx) => {
               const evalFailed = !!grading.perQuestion[q.id]?.evaluationFailed;
-              const isCorrect = isQuestionCorrect(q);
+              const isCorrect = isReviewQuestionCorrect(q);
               const aiNote = grading.perQuestion[q.id]?.aiReasoning?.trim();
               const imageUrls = q.type === 'image_upload' ? parseAnswerImageUrls(answers[q.id] ?? '') : [];
               return (

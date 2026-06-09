@@ -15,6 +15,7 @@ export function mapApiQuestionToStudent(q: any): Question {
     options: q.options,
     correctAnswer: q.correctAnswer ?? '',
     alternativeAnswers: Array.isArray(q.alternativeAnswers) ? q.alternativeAnswers : [],
+    gradingGuidance: q.gradingGuidance ?? '',
     explanation: q.explanation ?? '',
     difficulty: (['Easy', 'Medium', 'Hard'].includes(q.difficulty) ? q.difficulty : 'Medium') as
       | 'Easy'

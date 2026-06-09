@@ -353,6 +353,7 @@ export type Question = {
   options?: string[];
   correctAnswer?: string;
   alternativeAnswers?: string[];
+  gradingGuidance?: string;
   explanation?: string;
   difficulty?: "Easy" | "Medium" | "Hard";
   order: number;

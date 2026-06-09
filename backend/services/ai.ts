@@ -346,10 +346,15 @@ Respond in this exact JSON format (no markdown, just JSON):
 export async function evaluateSubjectiveAnswer(params: {
   questionText: string;
   correctAnswerText: string;
+  gradingGuidance?: string | null;
   studentAnswer: string;
   type: "text" | "image_upload";
 }): Promise<{ correct: boolean; reasoning: string; evaluationFailed?: boolean }> {
-  const { questionText, correctAnswerText, studentAnswer, type } = params;
+  const { questionText, correctAnswerText, gradingGuidance, studentAnswer, type } = params;
+  const guidanceBlock =
+    gradingGuidance?.trim() ?
+      `\nGrading guidance: ${gradingGuidance.trim()}\n`
+    : "";
 
   let parts: any[] = [];
 
@@ -375,16 +380,19 @@ export async function evaluateSubjectiveAnswer(params: {
       return { correct: false, reasoning: "No valid image data provided." };
     }
 
+    const rubric =
+      [correctAnswerText?.trim(), gradingGuidance?.trim()].filter(Boolean).join("\n") ||
+      "(No separate rubric text — infer the required result only from the question.)";
     parts = [
       {
-        text: buildImageEvaluationPrompt(questionText, correctAnswerText, imageParts.length),
+        text: buildImageEvaluationPrompt(questionText, rubric, imageParts.length),
       },
       ...imageParts,
     ];
   } else {
     parts = [
       {
-        text: `Question: ${questionText}\nExpected answer: ${correctAnswerText}\nStudent answer: ${studentAnswer}\n\n` +
+        text: `Question: ${questionText}\nExpected answer: ${correctAnswerText}${guidanceBlock}\nStudent answer: ${studentAnswer}\n\n` +
           `Evaluate whether the student answer is mathematically equivalent to the expected answer. ` +
           `Be lenient on how the answer is written: symbolic notation, informal keyboard-style input, and plain words are all acceptable. ` +
           `Be strict on whether the underlying mathematics is correct (value, operation, and concept must match). ` +

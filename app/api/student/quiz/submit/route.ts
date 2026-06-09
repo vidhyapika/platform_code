@@ -19,7 +19,10 @@ import {
 import { getUserById } from "../../../../../backend/repositories/userRepo";
 import { sendFlaggedAlert } from "../../../../../backend/services/notifications";
 import { evaluateSubjectiveAnswer } from "../../../../../backend/services/ai";
-import type { Question } from "../../../../../backend/repositories/curriculumRepo";
+import {
+  allAcceptedAnswersText,
+  matchesAcceptedTextAnswer,
+} from "../../../../../backend/utils/textAnswerMatch";
 import { z } from "zod";
 
 function scheduleFlaggedAlert(params: {
@@ -37,20 +40,6 @@ function scheduleFlaggedAlert(params: {
       console.error("[quiz/submit] flagged alert failed:", e);
     });
   });
-}
-
-function normalizeAnswer(s: string): string {
-  return s.toLowerCase().trim();
-}
-
-function matchesAcceptedAnswer(studentAnswer: string, question: Question): boolean {
-  const norm = normalizeAnswer(studentAnswer);
-  const accepted = [question.correctAnswer, ...(question.alternativeAnswers ?? [])].filter(Boolean) as string[];
-  return accepted.some((a) => normalizeAnswer(a) === norm);
-}
-
-function allAcceptedAnswersText(question: Question): string {
-  return [question.correctAnswer, ...(question.alternativeAnswers ?? [])].filter(Boolean).join(" OR ");
 }
 
 const SubmitSchema = z.object({
@@ -116,13 +105,14 @@ export async function POST(req: Request) {
         if (q.type === "text" || q.type === "image_upload") {
           if (!studentAnswer.trim()) {
             correct = false;
-          } else if (q.type === "text" && matchesAcceptedAnswer(studentAnswer, q)) {
+          } else if (q.type === "text" && matchesAcceptedTextAnswer(studentAnswer, q)) {
             correct = true;
-            aiReasoning = "Exact match to an accepted answer.";
+            aiReasoning = "Match to an accepted answer.";
           } else {
             const evalResult = await evaluateSubjectiveAnswer({
               questionText: q.text,
               correctAnswerText: allAcceptedAnswersText(q),
+              gradingGuidance: q.gradingGuidance,
               studentAnswer,
               type: q.type,
             });

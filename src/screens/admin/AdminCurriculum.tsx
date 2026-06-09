@@ -18,6 +18,7 @@ import {
 } from 'recharts';
 import { apiFetch } from '../../hooks/useApi';
 import { isTrueFalseOptionCorrect, normalizeQuestionForDisplay } from '../../utils/questionAnswerMatch';
+import { parseAlternativeAnswersFromCsv } from '../../utils/csvImport';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,17 +39,13 @@ type Question = {
   options?: string[];
   correctAnswer?: string | null;
   alternativeAnswers?: string[];
+  gradingGuidance?: string;
   explanation?: string;
   difficulty?: 'Easy' | 'Medium' | 'Hard';
   contextType?: string;
   contextId?: string;
   order?: number;
 };
-
-function parseAlternativeAnswers(input: string | undefined): string[] {
-  if (!input?.trim()) return [];
-  return input.split(',').map(s => s.trim()).filter(Boolean);
-}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -432,6 +429,7 @@ export function AdminCurriculum() {
         ...payload,
         optionsArray: payload?.options?.length ? [...payload.options] : ['', '', '', ''],
         alternativeAnswersText: (payload?.alternativeAnswers ?? []).join(', '),
+        gradingGuidanceText: payload?.gradingGuidance ?? '',
       });
     } else if (type === 'add-topic') {
       setFormData({ order: (currentTopics.length) + 1 });
@@ -597,8 +595,12 @@ export function AdminCurriculum() {
           : (formData.order != null ? Number(formData.order) : maxOrder + 1);
 
         const alternativeAnswers = qType === 'text'
-          ? parseAlternativeAnswers(formData.alternativeAnswersText)
+          ? parseAlternativeAnswersFromCsv(formData.alternativeAnswersText)
           : [];
+        const gradingGuidance =
+          qType === 'text' || qType === 'image_upload'
+            ? (formData.gradingGuidanceText?.trim() || undefined)
+            : undefined;
 
         const body = {
           contextType, contextId,
@@ -607,6 +609,7 @@ export function AdminCurriculum() {
           options: options ?? null,
           correctAnswer: formData.correctAnswer ?? null,
           alternativeAnswers,
+          gradingGuidance,
           imageUrl: formData.imageUrl?.trim() || null,
           difficulty: formData.difficulty ?? 'Medium',
           explanation: formData.explanation ?? '',
@@ -721,6 +724,7 @@ export function AdminCurriculum() {
         difficulty: it.difficulty ?? 'Medium',
         explanation: it.explanation ?? '',
         alternativeAnswers: it.alternativeAnswers ?? it.alternative_answers ?? [],
+        gradingGuidance: it.gradingGuidance ?? it.grading_guidance ?? '',
         order: Number(it.order ?? i),
       };
     });
@@ -988,7 +992,14 @@ export function AdminCurriculum() {
                 </span>
               </div>
             )}
+            <p className="text-[10px] text-green-700 mt-2">Equivalent fractions and parentheses (e.g. (-2/9)) are matched automatically.</p>
           </div>
+        </div>
+      )}
+      {(quiz.type === 'text' || quiz.type === 'image_upload') && quiz.gradingGuidance && (
+        <div className="mb-5 p-4 rounded-xl border border-violet-200 bg-violet-50">
+          <span className="text-[10px] font-bold text-violet-700 uppercase tracking-widest block mb-1">AI Grading Guidance</span>
+          <p className="text-sm text-violet-900 whitespace-pre-wrap">{quiz.gradingGuidance}</p>
         </div>
       )}
       {/* Explanation */}
@@ -1691,8 +1702,18 @@ function QuizForm({ formData, setFormData, onSubmit, saving, saveError, onCancel
           <label className="text-sm font-bold text-slate-700 block">Additional Accepted Answers (optional)</label>
           <input type="text" value={formData.alternativeAnswersText ?? ''} onChange={e => set('alternativeAnswersText', e.target.value)}
             className="block w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm transition-all outline-none font-medium text-slate-900"
-            placeholder="(-2/9), (-2)/9 — comma-separated variants" />
-          <p className="text-xs text-slate-500">Enter alternate formats students may use. Primary answer above is always accepted.</p>
+            placeholder="second degree|degree 2 — comma or pipe separated" />
+          <p className="text-xs text-slate-500">Explicit extras for auto-matching. Equivalent fractions/parentheses (e.g. (-2/9)) are accepted automatically from the primary answer.</p>
+        </div>
+      )}
+
+      {(qType === 'text' || qType === 'image_upload') && (
+        <div className="space-y-1.5">
+          <label className="text-sm font-bold text-slate-700 block">AI Grading Guidance (optional)</label>
+          <textarea value={formData.gradingGuidanceText ?? ''} onChange={e => set('gradingGuidanceText', e.target.value)}
+            className="block w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm transition-all outline-none font-medium text-slate-900 min-h-[70px] resize-y"
+            placeholder="Rules for AI when auto-matching cannot decide, e.g. Accept x = -2/9 or any equivalent fraction." />
+          <p className="text-xs text-slate-500">Used only when deterministic matching fails. Leave empty for simple numeric answers.</p>
         </div>
       )}
 

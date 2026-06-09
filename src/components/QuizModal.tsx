@@ -3,6 +3,7 @@ import { Modal } from './ui/Modal';
 import { Question } from '../types';
 import { CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import { MathRenderer, StudentAnswerMath } from './MathRenderer';
+import { isQuestionCorrect } from '../utils/quizAnswerMatch';
 
 interface QuizModalProps {
   isOpen: boolean;
@@ -54,7 +55,7 @@ export function QuizModal({ isOpen, onClose, title, questions, onSubmit, initial
     setIsSubmitted(true);
     let score = 0;
     questions.forEach(q => {
-      if (answers[q.id] === q.correctAnswer) {
+      if (isQuestionCorrect(q, answers[q.id] ?? '')) {
         score++;
       }
     });
@@ -64,7 +65,7 @@ export function QuizModal({ isOpen, onClose, title, questions, onSubmit, initial
   const calculateScore = () => {
     let score = 0;
     questions.forEach(q => {
-      if (answers[q.id] === q.correctAnswer) score++;
+      if (isQuestionCorrect(q, answers[q.id] ?? '')) score++;
     });
     return score;
   };
@@ -163,7 +164,7 @@ export function QuizModal({ isOpen, onClose, title, questions, onSubmit, initial
             
             <div className="space-y-6 text-left mb-8">
               {questions.map((q, idx) => {
-                const isCorrect = answers[q.id] === q.correctAnswer;
+                const isCorrect = isQuestionCorrect(q, answers[q.id] ?? '');
                 return (
                   <div key={q.id} className={`p-4 rounded-xl border ${isCorrect ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
                     <div className="flex items-start gap-3">

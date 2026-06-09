@@ -8,6 +8,7 @@ import {
 import { AIBadge } from './ui/AIBadge';
 import { VoiceClassroomPanel } from './voice/VoiceClassroomPanel';
 import { MathRenderer, StudentAnswerMath } from './MathRenderer';
+import { isQuestionCorrect } from '../utils/quizAnswerMatch';
 import { MathAnswerInput } from './MathAnswerInput';
 import { apiFetch } from '../hooks/useApi';
 import type { Question } from '../types';
@@ -131,7 +132,7 @@ export function FinalTestScreen({
   const passed = !evaluationIncomplete && pct >= passingThreshold;
 
   const wrongAnswers = questions
-    .filter(q => answers[q.id] && answers[q.id] !== q.correctAnswer)
+    .filter(q => answers[q.id] && !isQuestionCorrect(q, answers[q.id]))
     .map(q => ({
       questionId: q.id,
       questionText: q.text,
@@ -144,7 +145,7 @@ export function FinalTestScreen({
   async function submitTest() {
     setSubmitting(true);
     let localScore = 0;
-    questions.forEach(q => { if (answers[q.id] === q.correctAnswer) localScore++; });
+    questions.forEach(q => { if (isQuestionCorrect(q, answers[q.id] ?? '')) localScore++; });
     if (topicId) {
       const answersArray = Object.entries(answers).map(([questionId, answer]) => ({ questionId, answer }));
       try {
@@ -700,7 +701,7 @@ export function FinalTestScreen({
                     const evalFailed = !!pq?.evaluationFailed;
                     const isCorrect = pq
                       ? !evalFailed && !!pq.correct
-                      : answers[ques.id] === ques.correctAnswer;
+                      : isQuestionCorrect(ques, answers[ques.id] ?? '');
                     const imgUrls = ques.type === 'image_upload' ? parseAnswerImageUrls(answers[ques.id] ?? '') : [];
                     return (
                       <div key={ques.id} className={`rounded-3xl border p-6 md:p-8 ${evalFailed ? 'bg-amber-50/80 border-amber-200' : isCorrect ? 'bg-emerald-50/50 border-emerald-100' : 'bg-red-50/50 border-red-100'}`}>

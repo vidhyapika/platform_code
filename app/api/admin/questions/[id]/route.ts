@@ -14,6 +14,7 @@ const UpdateSchema = z.object({
   options: z.array(z.string()).nullable().optional(),
   correctAnswer: z.string().nullable().optional(),
   alternativeAnswers: z.array(z.string()).optional(),
+  gradingGuidance: z.string().optional(),
   explanation: z.string().optional(),
   difficulty: z.enum(["Easy", "Medium", "Hard"]).optional(),
   order: z.number().int().optional(),

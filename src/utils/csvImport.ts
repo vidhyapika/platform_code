@@ -33,7 +33,8 @@
  *   image_url             optional diagram URL for the question stem
  *   option_a … option_d   MCQ options (optional for boolean/text)
  *   correct_answer        must match one of the options exactly (or "True"/"False")
- *   alternative_answers   optional comma- or pipe-separated alternate text answers
+ *   alternative_answers   optional comma- or pipe-separated alternate text answers (Tier 1 extras)
+ *   grading_guidance      optional AI rubric notes when auto-matching cannot decide (Tier 2)
  *   explanation           explanation text
  *   difficulty            "Easy" | "Medium" | "Hard"  (default: Medium)
  *
@@ -53,7 +54,7 @@ import type { Question, Prerequisite, SubTopic, Topic, CurriculumClass, Standard
 
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
-function parseAlternativeAnswersFromCsv(raw: string | undefined): string[] {
+export function parseAlternativeAnswersFromCsv(raw: string | undefined): string[] {
   if (!raw?.trim()) return [];
   const sep = raw.includes('|') ? '|' : ',';
   return raw.split(sep).map(s => s.trim()).filter(Boolean);
@@ -111,6 +112,7 @@ interface RawRow {
   option_d: string;
   correct_answer: string;
   alternative_answers: string;
+  grading_guidance: string;
   explanation: string;
   difficulty: string;
 }
@@ -124,7 +126,7 @@ export const FULL_TEMPLATE_HEADERS = [
   'subtopic_title', 'subtopic_video', 'subtopic_order', 'subtopic_passing_threshold',
   'quiz_type', 'question_text', 'image_url', 'question_type',
   'option_a', 'option_b', 'option_c', 'option_d',
-  'correct_answer', 'alternative_answers', 'explanation', 'difficulty',
+  'correct_answer', 'alternative_answers', 'grading_guidance', 'explanation', 'difficulty',
 ] as const;
 
 function parseThreshold(raw: string, fallback = 60): number {
@@ -240,7 +242,7 @@ export function parseCSV(csvText: string, existingStandards: Standard[] = []): P
     subtopic_title: '', subtopic_video: '', subtopic_order: '', subtopic_passing_threshold: '',
     quiz_type: '', question_text: '', image_url: '', question_type: '',
     option_a: '', option_b: '', option_c: '', option_d: '',
-    correct_answer: '', alternative_answers: '', explanation: '', difficulty: '',
+    correct_answer: '', alternative_answers: '', grading_guidance: '', explanation: '', difficulty: '',
   });
   let ctx = emptyCtx();
 
@@ -380,6 +382,9 @@ export function parseCSV(csvText: string, existingStandards: Standard[] = []): P
       ? parseAlternativeAnswersFromCsv(r.alternative_answers)
       : [];
 
+    const gradingGuidance =
+      qType === 'text' || qType === 'image_upload' ? (r.grading_guidance?.trim() || undefined) : undefined;
+
     return {
       id: uid(),
       text: r.question_text,
@@ -388,6 +393,7 @@ export function parseCSV(csvText: string, existingStandards: Standard[] = []): P
       options,
       correctAnswer,
       alternativeAnswers,
+      gradingGuidance,
       explanation: r.explanation,
       difficulty,
     };
@@ -434,6 +440,7 @@ export function parseCSV(csvText: string, existingStandards: Standard[] = []): P
       option_d:        get(cells, 'option_d'),
       correct_answer:  get(cells, 'correct_answer'),
       alternative_answers: get(cells, 'alternative_answers'),
+      grading_guidance: get(cells, 'grading_guidance'),
       explanation:     get(cells, 'explanation'),
       difficulty:      cascade('difficulty'),
     };
@@ -689,6 +696,8 @@ export function getLevelEditorColumns(target: LevelParseTarget): string[] {
         "option_c",
         "option_d",
         "correct_answer",
+        "alternative_answers",
+        "grading_guidance",
         "explanation",
         "difficulty",
       ];
@@ -880,6 +889,11 @@ export function rowsToItems(rows: Record<string, string>[], target: LevelParseTa
       ? parseAlternativeAnswersFromCsv(get(r, "alternative_answers"))
       : [];
 
+    const gradingGuidance =
+      qType === "text" || qType === "image_upload"
+        ? get(r, "grading_guidance") || undefined
+        : undefined;
+
     return {
       id: uid(),
       text: get(r, "question_text"),
@@ -888,6 +902,7 @@ export function rowsToItems(rows: Record<string, string>[], target: LevelParseTa
       options,
       correctAnswer: qType === "image_upload" ? (correct || null) : correct || null,
       alternativeAnswers,
+      gradingGuidance,
       explanation,
       difficulty,
     };
@@ -951,6 +966,7 @@ export function parseLevelData(
     'a', 'b', 'c', 'd',
     'correct_answer', 'answer', 'correct',
     'alternative_answers', 'alternate_answers',
+    'grading_guidance', 'ai_grading_guidance', 'grading_notes', 'ai_instruction', 'ai_evaluation_guidance',
     'explanation',
     'difficulty',
   ]);
@@ -1006,6 +1022,10 @@ export function parseLevelData(
     a: 'option_a', b: 'option_b', c: 'option_c', d: 'option_d',
     answer: 'correct_answer', correct: 'correct_answer',
     alternate_answers: 'alternative_answers',
+    ai_grading_guidance: 'grading_guidance',
+    grading_notes: 'grading_guidance',
+    ai_instruction: 'grading_guidance',
+    ai_evaluation_guidance: 'grading_guidance',
   };
   headers = headers.map(h => ALIAS[h] ?? h);
 
@@ -1098,6 +1118,11 @@ export function parseLevelData(
         ? parseAlternativeAnswersFromCsv(getCell(cells, 'alternative_answers'))
         : [];
 
+      const gradingGuidance =
+        qType === 'text' || qType === 'image_upload'
+          ? getCell(cells, 'grading_guidance') || undefined
+          : undefined;
+
       items.push({
         id: uid(),
         text,
@@ -1106,6 +1131,7 @@ export function parseLevelData(
         options: options ?? null,
         correctAnswer: qType === 'image_upload' ? (correct || null) : correct,
         alternativeAnswers,
+        gradingGuidance,
         explanation,
         difficulty,
       });
@@ -1141,12 +1167,13 @@ export function generateLevelTemplateCSV(target: LevelParseTarget): string {
       ].join('\n');
     case 'questions':
       return [
-        'question_text,image_url,question_type,option_a,option_b,option_c,option_d,correct_answer,alternative_answers,explanation,difficulty',
-        'What is 5 + 3 × 2?,,mcq,16,11,10,13,11,,"BODMAS: multiply first → 3×2=6 → 5+6=11",Easy',
-        'Is 4x a monomial?,,true_false,,,,,True,,"A monomial has exactly one term.",Easy',
-        'Simplify 2x + 3x,,mcq,5x,6x,x,5x²,5x,,"Combine like terms: coefficients 2+3=5.",Medium',
-        'What is -2/9 as a fraction?,,text,,,,,-2/9,"(-2/9)|(-2)/9","Equivalent forms accepted.",Easy',
-        'Show your work for ∫ x dx,,image_upload,,,,,,,"Upload a photo of your solution",Medium',
+        'question_text,image_url,question_type,option_a,option_b,option_c,option_d,correct_answer,alternative_answers,grading_guidance,explanation,difficulty',
+        'What is 5 + 3 × 2?,,mcq,16,11,10,13,11,,,"BODMAS: multiply first → 3×2=6 → 5+6=11",Easy',
+        'Is 4x a monomial?,,true_false,,,,,True,,,"A monomial has exactly one term.",Easy',
+        'Simplify 2x + 3x,,mcq,5x,6x,x,5x²,5x,,,"Combine like terms: coefficients 2+3=5.",Medium',
+        'What is -2/9 as a fraction?,,text,,,,,-2/9,,,"Equivalent fraction forms are auto-accepted.",Easy',
+        'Name the degree of a quadratic.,,text,,,,,2,"second degree|degree 2","Accept phrases mentioning second degree.",Easy',
+        'Show your work for ∫ x dx,,image_upload,,,,,,,"Student must show integration steps clearly.",Medium',
       ].join('\n');
   }
 }
@@ -1182,7 +1209,8 @@ export const LEVEL_COLUMN_DOCS: Record<LevelParseTarget, LevelColumnDoc[]> = {
     { name: 'option_c',        required: false, description: 'Third MCQ choice (optional).', example: '5' },
     { name: 'option_d',        required: false, description: 'Fourth MCQ choice (optional).', example: '6' },
     { name: 'correct_answer',  required: false, description: 'For MCQ: must match an option exactly. For True/False: True or False. For text: primary accepted answer. For image_upload: optional rubric note.', example: '4' },
-    { name: 'alternative_answers', required: false, description: 'Text questions only: comma- or pipe-separated alternate accepted answers.', example: '(-2/9)|(-2)/9' },
+    { name: 'alternative_answers', required: false, description: 'Text questions only: comma- or pipe-separated extras for auto-matching (optional for equivalent fractions — Tier 1 handles those).', example: 'second degree|degree 2' },
+    { name: 'grading_guidance', required: false, description: 'Text/image_upload: optional AI rubric when auto-matching cannot decide.', example: "Accept '2' or phrases mentioning second degree." },
     { name: 'explanation',     required: false, description: 'Explanation shown after answering.', example: 'Because 2+2 equals 4.' },
     { name: 'difficulty',      required: false, description: 'Difficulty level.', allowedValues: 'Easy | Medium | Hard', example: 'Easy' },
   ],
@@ -1211,40 +1239,40 @@ export function generateTemplateCSV(level: ImportLevel = 'full'): string {
       'Algebraic Expressions', '1', 'Intro to algebra and polynomials', '60',
       ...blank(5),
       'Introduction to Polynomials', 'https://youtube.com/watch?v=example', '1', '60',
-      ...blank(11),
+      ...blank(12),
     ]),
     // Prerequisite
     row([
       ...blank(8),
       'Basic Arithmetic', 'Major', 'Students must know addition and multiplication', '60', '3',
-      ...blank(15),
+      ...blank(16),
     ]),
     // MCQ — subtopic quiz
     row([
       ...blank(17),
-      'subtopic', 'What is 5 + 3 × 2?', '', 'mcq', '16', '11', '10', '13', '11', '', 'BODMAS: multiply first', 'Easy',
+      'subtopic', 'What is 5 + 3 × 2?', '', 'mcq', '16', '11', '10', '13', '11', '', '', 'BODMAS: multiply first', 'Easy',
     ]),
     // true_false — pre-evaluation
     row([
       ...blank(17),
-      'pre', 'Is 4x a monomial?', '', 'true_false', '', '', '', '', 'True', '', 'A monomial has exactly one term.', 'Easy',
+      'pre', 'Is 4x a monomial?', '', 'true_false', '', '', '', '', 'True', '', '', 'A monomial has exactly one term.', 'Easy',
     ]),
     // text — final test
     row([
       ...blank(17),
-      'post', 'Simplify 2x + 3x', '', 'text', '', '', '', '', '5x', '5*x', 'Combine like terms: 2+3=5.', 'Medium',
+      'post', 'Simplify 2x + 3x', '', 'text', '', '', '', '', '5x', '5*x', '', 'Combine like terms: 2+3=5.', 'Medium',
     ]),
     // image_upload — subtopic quiz with stem diagram
     row([
       ...blank(17),
       'subtopic', 'Label the parts of the polynomial diagram', 'https://example.com/diagram.png', 'image_upload',
-      '', '', '', '', '', '', 'Upload a clear photo of your labelled diagram.', 'Medium',
+      '', '', '', '', '', '', 'Student must label all parts clearly in the photo.', 'Upload a clear photo of your labelled diagram.', 'Medium',
     ]),
     // Second subtopic (inherits topic context)
     row([
       ...blank(13),
       'Multiplying Polynomials', 'https://youtube.com/watch?v=example2', '2', '65',
-      ...blank(11),
+      ...blank(12),
     ]),
   ];
 
@@ -1288,7 +1316,8 @@ export const COLUMN_DOCS: ColumnDoc[] = [
   { name: 'option_c', required: false, description: 'Third MCQ choice (optional).', example: '5' },
   { name: 'option_d', required: false, description: 'Fourth MCQ choice (optional).', example: '6' },
   { name: 'correct_answer', required: false, description: 'MCQ: must exactly match an option. true_false: True or False. text: primary accepted answer. image_upload: optional rubric note.', example: '4' },
-  { name: 'alternative_answers', required: false, description: 'Text questions only: comma- or pipe-separated alternate accepted answers.', example: '(-2/9)|(-2)/9' },
+  { name: 'alternative_answers', required: false, description: 'Text questions only: comma- or pipe-separated extras for auto-matching (optional for equivalent fractions).', example: 'second degree|degree 2' },
+  { name: 'grading_guidance', required: false, description: 'Text/image_upload: optional AI rubric when auto-matching cannot decide.', example: "Accept '2' or phrases mentioning second degree." },
   { name: 'explanation', required: false, description: 'Explanation shown after answering.', example: 'Because 2+2 equals 4.' },
   { name: 'difficulty', required: false, description: 'Difficulty level.', allowedValues: 'Easy | Medium | Hard', example: 'Easy' },
 ];

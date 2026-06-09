@@ -59,7 +59,7 @@ const TARGET_PASTE_PLACEHOLDER: Record<LevelParseTarget, string> = {
   prerequisites:
     'Paste Excel data here.\n\nExpected columns:\nprereq_title  prereq_category\n\nExample:\nBasic Arithmetic\tMajor',
   questions:
-    'Paste Excel data here.\n\nColumns (image_url optional):\nquestion_text  image_url  question_type  option_a … option_d  correct_answer  explanation  difficulty\n\nTypes: mcq | true_false | text | image_upload\n\nExample:\nWhat is 2+2?\t\tmcq\t3\t4\t5\t6\t4\tTwo plus two equals four.\tEasy',
+    'Paste Excel data here.\n\nColumns (image_url optional):\nquestion_text  image_url  question_type  option_a … option_d  correct_answer  alternative_answers  grading_guidance  explanation  difficulty\n\nTypes: mcq | true_false | text | image_upload\n\nExample:\nWhat is -2/9?,,text,,,,,-2/9,,,Easy fraction question.,Easy',
 };
 
 // ─── Preview table column defs per target ────────────────────────────────────
