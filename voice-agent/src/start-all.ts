@@ -12,7 +12,7 @@ const root = join(__dirname, "..");
 
 
 
-const agent = spawn("node", [join(root, "dist/index.js")], {
+const agent = spawn("node", [join(root, "dist/index.js"), "start"], {
 
   stdio: "inherit",
 

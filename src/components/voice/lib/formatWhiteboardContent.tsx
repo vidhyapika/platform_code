@@ -101,8 +101,12 @@ export function renderHighlightLatex(text: string): React.ReactNode {
 
 const MARKDOWN_HINT = /^(#{1,6}\s|[-*]\s|\d+\.\s|```|>\s)/m;
 
+const INLINE_MARKDOWN_HINT =
+  /\*\*[^*\n]+\*\*|__[^_\n]+__|\[[^\]]+\]\([^)]+\)|`[^`\n]+`/;
+
 export function looksLikeMarkdown(text: string): boolean {
-  return MARKDOWN_HINT.test(text.trim());
+  const t = text.trim();
+  return MARKDOWN_HINT.test(t) || INLINE_MARKDOWN_HINT.test(t);
 }
 
 function softenLongParagraph(text: string): string {

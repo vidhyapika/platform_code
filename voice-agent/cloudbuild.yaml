@@ -1,0 +1,14 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - asia-south1-docker.pkg.dev/$PROJECT_ID/vidhyapika/voice-agent:$BUILD_ID
+      - -t
+      - asia-south1-docker.pkg.dev/$PROJECT_ID/vidhyapika/voice-agent:latest
+      - .
+    dir: voice-agent
+
+images:
+  - asia-south1-docker.pkg.dev/$PROJECT_ID/vidhyapika/voice-agent:$BUILD_ID
+  - asia-south1-docker.pkg.dev/$PROJECT_ID/vidhyapika/voice-agent:latest
