@@ -5,7 +5,10 @@ export async function fetchSessionMeta(roomName: string): Promise<SessionMeta | 
     process.env.NEXT_APP_URL ?? process.env.APP_URL ?? "http://localhost:3000";
   const secret = process.env.VOICE_AGENT_SERVICE_SECRET;
   if (!secret) {
-    console.error("[voice-agent] VOICE_AGENT_SERVICE_SECRET not set");
+    console.error("[voice-agent] VOICE_AGENT_SERVICE_SECRET not set — cannot fetch session meta", {
+      baseUrl: base,
+      roomName,
+    });
     return null;
   }
 
@@ -15,12 +18,24 @@ export async function fetchSessionMeta(roomName: string): Promise<SessionMeta | 
       headers: { "x-voice-agent-secret": secret },
     });
     if (!res.ok) {
-      console.error("[voice-agent] session-meta HTTP", res.status, await res.text());
+      const body = await res.text();
+      console.error("[voice-agent] session-meta HTTP error", {
+        status: res.status,
+        url,
+        baseUrl: base,
+        roomName,
+        body: body.slice(0, 200),
+      });
       return null;
     }
     return (await res.json()) as SessionMeta;
   } catch (e) {
-    console.error("[voice-agent] session-meta fetch failed", e);
+    console.error("[voice-agent] session-meta fetch failed", {
+      url,
+      baseUrl: base,
+      roomName,
+      error: e instanceof Error ? e.message : String(e),
+    });
     return null;
   }
 }

@@ -32,6 +32,28 @@ interface ProcessUserData extends Record<string, unknown> {
 
 const USER_AWAY_TIMEOUT_SEC = 120;
 
+const TURN_HANDLING = {
+  interruption: {
+    minWords: 2,
+    minDuration: 900,
+    backchannelBoundary: [2000, 4000] as [number, number],
+    resumeFalseInterruption: true,
+  },
+  preemptiveGeneration: {
+    enabled: true,
+  },
+} as const;
+
+function createTutorLlm() {
+  return new google.LLM({
+    model: "gemini-2.5-flash",
+    apiKey: process.env.GEMINI_API_KEY,
+    temperature: 0.52,
+    maxOutputTokens: 8192,
+    thinkingConfig: { thinkingBudget: 0 },
+  });
+}
+
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -137,10 +159,79 @@ async function waitForBootstrap(roomName: string, initial: SessionMeta | null): 
   return meta;
 }
 
+const ANTI_HALLUCINATION_PREFIX =
+  "The student has NOT agreed unless you see their words in the conversation. Do not say sounds good, okay great, or pretend they responded. ";
+
+const SILENCE_NUDGE_MS = 45_000;
+
+function buildTurnAInstructions(degraded: boolean): string {
+  const base = degraded
+    ? "The student has spoken and is ready. Call write_title only with 'Phase 1: Review Your Mistakes'. Speak one short sentence introducing the first failed question. Do NOT call any other tools."
+    : "The student has spoken and is ready. Call write_title only with 'Phase A: Reviewing Mistakes'. Speak one short sentence introducing the first mistake. Do NOT call any other tools.";
+  return ANTI_HALLUCINATION_PREFIX + base;
+}
+
+async function dispatchTeachingTurn(
+  session: voice.AgentSession,
+  instructions: string,
+  roomName: string,
+  label: string
+) {
+  const handle = session.generateReply({ instructions, allowInterruptions: false });
+  await handle.waitForPlayout();
+  console.log(`[voice-agent] ${label} playout complete`, { room: roomName });
+}
+
+function registerTeachingKickoffOnFirstSpeech(
+  session: voice.AgentSession,
+  roomName: string,
+  degraded: boolean
+) {
+  let teachingKickoffDone = false;
+  let silenceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const clearSilenceNudge = () => {
+    if (silenceTimer) {
+      clearTimeout(silenceTimer);
+      silenceTimer = null;
+    }
+  };
+
+  const onFirstStudentSpeech = (ev: { transcript: string; isFinal: boolean }) => {
+    if (teachingKickoffDone || !ev.isFinal) return;
+    const text = ev.transcript.trim();
+    if (text.split(/\s+/).filter(Boolean).length < TURN_HANDLING.interruption.minWords) return;
+    teachingKickoffDone = true;
+    clearSilenceNudge();
+    (session as { off: (ev: string, fn: (e: unknown) => void) => void }).off(
+      "user_input_transcribed",
+      onFirstStudentSpeech
+    );
+    console.log("[voice-agent] teaching kickoff on first student speech", { room: roomName });
+    void dispatchTeachingTurn(session, buildTurnAInstructions(degraded), roomName, "turn A");
+  };
+
+  (session as { on: (ev: string, fn: (e: unknown) => void) => void }).on(
+    "user_input_transcribed",
+    onFirstStudentSpeech
+  );
+
+  silenceTimer = setTimeout(() => {
+    if (teachingKickoffDone) return;
+    console.log("[voice-agent] silence nudge dispatched", { room: roomName });
+    session.generateReply({
+      instructions:
+        "The student has been silent. In one short sentence, invite them to say hello or 'ready' when they want to start. Do NOT begin teaching or call any tools. Do NOT pretend they spoke.",
+      allowInterruptions: true,
+    });
+  }, SILENCE_NUDGE_MS);
+}
+
 async function runMissingMetaSession(ctx: JobContext, roomName: string, vad: silero.VAD) {
   const agent = new voice.Agent({
     instructions:
       "You are a voice tutor. The lesson session failed to load. Apologize briefly and ask the student to leave and restart the voice session from the app.",
+    llm: createTutorLlm(),
   });
 
   const session = new voice.AgentSession({
@@ -151,14 +242,44 @@ async function runMissingMetaSession(ctx: JobContext, roomName: string, vad: sil
       model: "aura-asteria-en",
     }),
     ttsTextTransforms: TTS_TEXT_TRANSFORMS,
+    turnHandling: TURN_HANDLING,
     userAwayTimeout: USER_AWAY_TIMEOUT_SEC,
   });
 
   await session.start({ agent, room: ctx.room });
+  registerSessionDiagnostics(session, roomName);
   await ctx.waitForParticipant().catch(() => undefined);
   session.generateReply({
     instructions:
       "Apologize in one or two short sentences. Say the tutoring session could not load and they should restart from the app.",
+  });
+}
+
+function registerSessionDiagnostics(session: voice.AgentSession, roomName: string) {
+  let llmRecoveryAttempted = false;
+  const on = session as { on: (ev: string, fn: (e: unknown) => void) => void };
+  on.on("error", (ev: { error?: unknown; source?: string }) => {
+    const errorMsg = ev.error instanceof Error ? ev.error.message : String(ev.error ?? "unknown");
+    console.error("[voice-agent] session error", {
+      room: roomName,
+      source: ev.source,
+      error: errorMsg,
+    });
+    if (!llmRecoveryAttempted && errorMsg.includes("no content in the response")) {
+      llmRecoveryAttempted = true;
+      console.warn("[voice-agent] empty LLM response — dispatching recovery turn", { room: roomName });
+      session.generateReply({
+        instructions:
+          "Continue teaching the current mistake in 2 short spoken sentences. Speech only — no tools this turn.",
+        allowInterruptions: true,
+      });
+    }
+  });
+  on.on("agent_false_interruption", (ev: { resumed?: boolean }) => {
+    console.log("[voice-agent] false interruption", { room: roomName, resumed: ev.resumed });
+  });
+  on.on("close", (ev: { reason?: string }) => {
+    console.log("[voice-agent] session closed", { room: roomName, reason: ev.reason });
   });
 }
 
@@ -249,6 +370,7 @@ export default defineAgent<ProcessUserData>({
     proc.userData.vad = await silero.VAD.load();
   },
   entry: async (ctx) => {
+    try {
     let roomName = await resolveRoomName(ctx);
     console.log("[voice-agent] job received", {
       room: roomName,
@@ -317,13 +439,7 @@ export default defineAgent<ProcessUserData>({
     const agent = new voice.Agent({
       instructions,
       tools,
-      llm: new google.LLM({
-        model: "gemini-2.5-flash",
-        apiKey: process.env.GEMINI_API_KEY,
-        temperature: 0.52,
-        maxOutputTokens: 8192,
-        thinkingConfig: { thinkingBudget: 0 },
-      }),
+      llm: createTutorLlm(),
     });
 
     const session = new voice.AgentSession({
@@ -335,6 +451,7 @@ export default defineAgent<ProcessUserData>({
       }),
       ttsTextTransforms: TTS_TEXT_TRANSFORMS,
       maxToolSteps: 40,
+      turnHandling: TURN_HANDLING,
       userAwayTimeout: USER_AWAY_TIMEOUT_SEC,
     });
 
@@ -361,6 +478,7 @@ export default defineAgent<ProcessUserData>({
     );
 
     await session.start({ agent, room: ctx.room });
+    registerSessionDiagnostics(session, roomName);
     registerAgentRpcHandlers(ctx.room.localParticipant, session, wb);
     console.log("[voice-agent] session started", { room: roomName, sessionId: meta.sessionId });
 
@@ -376,15 +494,30 @@ export default defineAgent<ProcessUserData>({
 
     const degraded = isDegradedBootstrap(meta);
     const greeting = degraded
-      ? `Greet the student warmly in 2 short sentences. You are helping them with quiz questions they missed on ${topicLabel}. Say you will walk through each missed question and practice briefly. Do not mention a full lesson pack.`
-      : `Greet the student warmly. You are helping them with concepts they missed on ${topicLabel}. Say you will review their mistakes, teach the lesson, and practice together before their retake quiz. Keep it to 2-3 short sentences.`;
+      ? `Greet the student warmly in 2 short sentences. You are helping them with quiz questions they missed on ${topicLabel}. Say you will walk through each missed question and practice briefly. End by telling them to say hello when they are ready to begin. Do not mention a full lesson pack. Speech only. Do NOT call any tools. Do NOT ask questions that invite a reply.`
+      : `Greet the student warmly. You are helping them with concepts they missed on ${topicLabel}. Say you will review their mistakes, teach the lesson, and practice together before their retake quiz. End by telling them to say hello when they are ready to begin. Keep it to 2-3 short sentences. Speech only. Do NOT call any tools. Do NOT ask "How does that sound?" or other questions that invite a reply.`;
 
-    session.generateReply({ instructions: greeting });
+    const greetingHandle = session.generateReply({
+      instructions: greeting,
+      allowInterruptions: false,
+    });
     console.log("[voice-agent] greeting dispatched", { room: roomName, topicLabel });
+
+    await greetingHandle.waitForPlayout();
+    console.log("[voice-agent] greeting playout complete", { room: roomName });
+
+    registerTeachingKickoffOnFirstSpeech(session, roomName, degraded);
 
     ctx.addShutdownCallback(async () => {
       console.log("[voice-agent] shutdown", { room: roomName });
     });
+    } catch (err) {
+      console.error("[voice-agent] entry fatal error", {
+        room: ctx.job.room?.name ?? ctx.room.name ?? "",
+        error: err instanceof Error ? err.message : String(err),
+      });
+      ctx.shutdown("error");
+    }
   },
 });
 
@@ -392,6 +525,6 @@ cli.runApp(
   new ServerOptions({
     agent: fileURLToPath(import.meta.url),
     agentName: process.env.LIVEKIT_AGENT_NAME ?? "vidhyapika-tutor",
-    numIdleProcesses: 1,
+    numIdleProcesses: 0,
   })
 );

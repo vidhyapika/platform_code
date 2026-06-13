@@ -11,10 +11,12 @@ RUN npm ci --omit=dev
 
 COPY tsconfig.json ./
 COPY src ./src
-RUN npm install typescript tsx --no-save && npx tsc && npm uninstall typescript tsx
+COPY docker-entrypoint.sh /entrypoint.sh
+RUN npm install typescript tsx --no-save && npx tsc && npm uninstall typescript tsx \
+  && chmod +x /entrypoint.sh
 
 ENV NODE_ENV=production
 
 EXPOSE 3001
 
-CMD ["node", "dist/index.js", "start"]
+CMD ["/entrypoint.sh"]

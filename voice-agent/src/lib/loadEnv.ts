@@ -21,11 +21,21 @@ export function loadVoiceAgentEnv() {
     }
   }
 
+  // Dev worker (`npm run dev`) fetches session meta from local Next.js by default.
+  if (process.argv.includes("dev")) {
+    process.env.NEXT_APP_URL =
+      process.env.VOICE_AGENT_NEXT_APP_URL ?? "http://localhost:3000";
+  }
+
   // Next app may use GEMINI_API_KEY; Google plugin accepts GOOGLE_API_KEY or GEMINI_API_KEY
   if (!process.env.GEMINI_API_KEY && process.env.GOOGLE_API_KEY) {
     process.env.GEMINI_API_KEY = process.env.GOOGLE_API_KEY;
   }
   if (!process.env.GOOGLE_API_KEY && process.env.GEMINI_API_KEY) {
+    process.env.GOOGLE_API_KEY = process.env.GEMINI_API_KEY;
+  }
+  // GEMINI_API_KEY is the single source of truth when both are set
+  if (process.env.GEMINI_API_KEY) {
     process.env.GOOGLE_API_KEY = process.env.GEMINI_API_KEY;
   }
 }
